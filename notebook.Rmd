@@ -18,17 +18,19 @@ workout_data_batch <- get_whoop_records(endpoint = "workout", max_records = 100)
 recovery_data_batch <- get_whoop_records(endpoint = "recovery", max_records = 100)
 cycle_data_batch <- get_whoop_records(endpoint = "cycle", max_records = 100)
 
-get_whoop_records()
+
 
 write_json(sleep_data_batch, here("data", "whoop_sleep_data_batch.json"), pretty = TRUE)
 write_json(workout_data_batch, here("data","whoop_workout_data_batch.json"), pretty = TRUE)
-write_json(recovery_data_batch, here("data","whoop_recovery_data_bach.json"), pretty = TRUE)
+write_json(recovery_data_batch, here("data","whoop_recovery_data_batch.json"), pretty = TRUE)
 write_json(cycle_data_batch, here("data","whoop_cycle_data_batch.json"), pretty = TRUE)
 ```
 
 ```{r data-load}
-whoop_cycles <- jsonlite::read_json(here("data", "whoop_cycle_data_batch.json"), simplifyVector = FALSE)
-whoop_cycles_simplified <- jsonlite::read_json(here("data", "whoop_cycle_data_batch.json"), simplifyVector = TRUE)
+whoop_sleep <- jsonlite::read_json(here("data", "whoop_sleep_data_batch.json"), simplifyVector = TRUE)
+whoop_workout <- jsonlite::read_json(here("data", "whoop_workout_data_batch.json"), simplifyVector = TRUE)
+whoop_recovery <- jsonlite::read_json(here("data", "whoop_recovery_data_batch.json"), simplifyVector = TRUE)
+whoop_cycle <- jsonlite::read_json(here("data", "whoop_cycle_data_batch.json"), simplifyVector = TRUE)
 ```
 
 ```{r data-cleaning}
