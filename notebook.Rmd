@@ -34,6 +34,23 @@ whoop_cycle <- jsonlite::read_json(here("data", "whoop_cycle_data_batch.json"), 
 ```
 
 ```{r data-cleaning}
+recovery_clean <- whoop_recovery %>%        # take raw data, save result into recovery_clean
+  mutate(date = as.Date(unlist(created_at))) %>%  # add clean date column
+  bind_cols(                                 # stick score columns alongside
+    whoop_recovery$score %>%                 # grab the nested score data frame
+      mutate(                                # convert all columns from list to proper types
+        user_calibrating = as.logical(unlist(user_calibrating)),
+        recovery_score = as.numeric(unlist(recovery_score)),
+        resting_heart_rate = as.numeric(unlist(resting_heart_rate)),
+        hrv_rmssd_milli    = as.numeric(unlist(hrv_rmssd_milli)),
+        spo2_percentage    = as.numeric(unlist(spo2_percentage)),
+        skin_temp_celsius = as.numeric(sapply(skin_temp_celsius, function(x) if(length(x) == 0) NA else x))
+      )
+  ) %>%
+  select(date, user_calibrating, recovery_score,    # keep only useful columns
+         resting_heart_rate, hrv_rmssd_milli,
+         spo2_percentage, skin_temp_celsius)
+  
 
 ```
 
