@@ -102,8 +102,42 @@ sleep_clean <- sleep_main$score %>%
   # move date to first column, then keep everything else
   select(date, everything())
 
+# ── Workout ───────────────────────────────────────────────
+# Each row = one workout session (multiple per day possible)
+# distance and altitude columns are empty for indoor workouts
+workout_clean <- whoop_workout %>%
+  mutate(date = as.Date(unlist(created_at))) %>% # convert timestamp to clean date
+  bind_cols( # stick score columns alongside main data
+    whoop_workout$score %>% # grab the nested score data frame
+     mutate(
+        strain              = as.numeric(sapply(strain, function(x) if(length(x) == 0) NA else x)),
+        average_heart_rate  = as.numeric(sapply(average_heart_rate, function(x) if(length(x) == 0) NA else x)),
+        max_heart_rate      = as.numeric(sapply(max_heart_rate, function(x) if(length(x) == 0) NA else x)),
+        kilojoule           = as.numeric(sapply(kilojoule, function(x) if(length(x) == 0) NA else x)),
+        percent_recorded    = as.numeric(sapply(percent_recorded, function(x) if(length(x) == 0) NA else x)),
+        distance_meter      = as.numeric(sapply(distance_meter, function(x) if(length(x) == 0) NA else x)),
+        altitude_gain_meter = as.numeric(sapply(altitude_gain_meter, function(x) if(length(x) == 0) NA else x))
+      )  %>%
+      select(strain, average_heart_rate, max_heart_rate,
+             kilojoule, percent_recorded, distance_meter,
+             altitude_gain_meter) # keep only useful score columns
+  ) %>%
+  select(date, strain, average_heart_rate, max_heart_rate, # keep only useful columns
+         kilojoule, percent_recorded, distance_meter,
+         altitude_gain_meter)
 
-    
+# ── Cycle ─────────────────────────────────────────────────
+# Each row = one full daily cycle (one per day)
+# Score is directly inside whoop_cycle, no separate extraction needed
+cycle_clean <- whoop_cycle %>%
+  mutate(date = as.Date(unlist(created_at)), # convert timestamp to clean date
+         strain             = as.numeric(unlist(score$strain)),             # total daily strain
+         kilojoule          = as.numeric(unlist(score$kilojoule)),          # total energy burned
+         average_heart_rate = as.numeric(unlist(score$average_heart_rate)), # avg heart rate all day
+         max_heart_rate     = as.numeric(unlist(score$max_heart_rate))      # peak heart rate of day
+  ) %>%
+  select(date, strain, kilojoule, average_heart_rate, max_heart_rate) # keep only useful columns
+
 
 ```
 
