@@ -34,22 +34,26 @@ whoop_cycle <- jsonlite::read_json(here("data", "whoop_cycle_data_batch.json"), 
 ```
 
 ```{r data-cleaning}
-recovery_clean <- whoop_recovery %>%        # take raw data, save result into recovery_clean
-  mutate(date = as.Date(unlist(created_at))) %>%  # add clean date column
-  bind_cols(                                 # stick score columns alongside
-    whoop_recovery$score %>%                 # grab the nested score data frame
-      mutate(                                # convert all columns from list to proper types
-        user_calibrating = as.logical(unlist(user_calibrating)),
-        recovery_score = as.numeric(unlist(recovery_score)),
+# ── Recovery ──────────────────────────────────────────────
+recovery_clean <- whoop_recovery %>%
+  mutate(date = as.Date(unlist(created_at))) %>%
+  bind_cols(
+    whoop_recovery$score %>%
+      mutate(
+        user_calibrating   = as.logical(unlist(user_calibrating)),
+        recovery_score     = as.numeric(unlist(recovery_score)),
         resting_heart_rate = as.numeric(unlist(resting_heart_rate)),
         hrv_rmssd_milli    = as.numeric(unlist(hrv_rmssd_milli)),
         spo2_percentage    = as.numeric(unlist(spo2_percentage)),
-        skin_temp_celsius = as.numeric(sapply(skin_temp_celsius, function(x) if(length(x) == 0) NA else x))
+        skin_temp_celsius  = as.numeric(sapply(skin_temp_celsius, function(x) if(length(x) == 0) NA else x))
       )
   ) %>%
-  select(date, user_calibrating, recovery_score,    # keep only useful columns
+  select(date, user_calibrating, recovery_score,
          resting_heart_rate, hrv_rmssd_milli,
-         spo2_percentage, skin_temp_celsius)
+         spo2_percentage, skin_temp_celsius) %>%
+  group_by(date) %>%          # group by date to handle duplicate scores
+  slice_tail(n = 1) %>%       # keep most recent score per day
+  ungroup()                   # release grouping
   
 # ── Sleep ──────────────────────────────────────────────────
 # Step 1: Remove naps and handle duplicate dates
@@ -126,26 +130,90 @@ workout_clean <- whoop_workout %>%
          kilojoule, percent_recorded, distance_meter,
          altitude_gain_meter)
 
+
 # ── Cycle ─────────────────────────────────────────────────
 # Each row = one full daily cycle (one per day)
-# Score is directly inside whoop_cycle, no separate extraction needed
+# Some dates have two cycles — keep only distinct dates
+# by selecting the row with highest strain (most complete day)
 cycle_clean <- whoop_cycle %>%
-  mutate(date = as.Date(unlist(created_at)), # convert timestamp to clean date
-         strain             = as.numeric(unlist(score$strain)),             # total daily strain
-         kilojoule          = as.numeric(unlist(score$kilojoule)),          # total energy burned
-         average_heart_rate = as.numeric(unlist(score$average_heart_rate)), # avg heart rate all day
-         max_heart_rate     = as.numeric(unlist(score$max_heart_rate))      # peak heart rate of day
+  mutate(
+    date               = as.Date(unlist(created_at)),                  # convert timestamp to clean date
+    strain             = as.numeric(unlist(score$strain)),             # total daily strain
+    kilojoule          = as.numeric(unlist(score$kilojoule)),          # total energy burned
+    average_heart_rate = as.numeric(unlist(score$average_heart_rate)), # avg heart rate all day
+    max_heart_rate     = as.numeric(unlist(score$max_heart_rate))      # peak heart rate of day
   ) %>%
-  select(date, strain, kilojoule, average_heart_rate, max_heart_rate) # keep only useful columns
+  select(date, strain, kilojoule, average_heart_rate, max_heart_rate) %>%
+  group_by(date) %>%
+  slice_max(strain, n = 1, with_ties = FALSE) %>%  # keep highest strain per day
+  ungroup()
 
 
 ```
 
 ```{r data-transformation}
+# ── Sleep transformations ──────────────────────────────────
+# Calculate total actual sleep and sleep deficit
+sleep_clean <- sleep_clean %>%
+  mutate(
+    # total actual sleep = deep + rem + light sleep combined
+    total_sleep_hours = total_deep_sleep_hours + total_rem_sleep_hours + total_light_sleep_hours,
+    
+    # sleep deficit = how much sleep was needed vs how much was actually gotten
+    # negative means he got less sleep than needed
+    sleep_deficit = total_sleep_hours - baseline_hours
+  )
+
+# ── Recovery transformations ───────────────────────────────
+# Add recovery zone based on score
+# WHOOP uses: red (0-33), yellow (34-66), green (67-100)
+recovery_clean <- recovery_clean %>%
+  mutate(
+    recovery_zone = case_when(
+      recovery_score <= 33 ~ "red",    # body needs rest
+      recovery_score <= 66 ~ "yellow", # moderate day
+      TRUE                 ~ "green"   # ready to push hard
+    )
+  )
+
+
+# ── Workout transformations ────────────────────────────────
+# Convert kilojoules to calories (1 kilojoule = 0.239 calories)
+# Rename columns to avoid confusion with cycle columns when joining
+workout_clean <- workout_clean %>%
+  mutate(
+    calories = kilojoule * 0.239  # convert energy to more familiar unit
+  ) %>%
+  rename(
+    workout_strain   = strain,              # rename to avoid clash with cycle strain
+    workout_avg_hr   = average_heart_rate,  # rename to avoid clash with cycle avg hr
+    workout_max_hr   = max_heart_rate,      # rename to avoid clash with cycle max hr
+    workout_kilojoule = kilojoule           # rename to avoid clash with cycle kilojoule
+  )
+
+
 
 ```
 
 ```{r data-combination}
+# ── Master dataset ─────────────────────────────────────────
+# Step 1: Join daily datasets (one row per day each)
+# recovery, sleep and cycle all have one row per day after deduplication
+whoop_daily <- recovery_clean %>%
+  left_join(sleep_clean, by = "date") %>%  # join sleep by date
+  left_join(cycle_clean, by = "date")      # join cycle by date
+
+# Step 2: Join workout — creates multiple rows per day
+# when your friend had multiple workouts on the same day
+whoop_master <- whoop_daily %>%
+  left_join(workout_clean, by = "date")    # join workout by date
+
+# Final check
+dim(whoop_daily)   # 99 rows — one per day after deduplication
+dim(whoop_master)  # 151 rows — multiple workouts per day
+# Save master dataset to data folder for future use
+write.csv(whoop_master, here("data", "whoop_master.csv"), row.names = FALSE)
+
 
 ```
 
