@@ -9,6 +9,7 @@ library(jsonlite)
 library(tidyverse)
 library(naniar)
 
+
 source("util/helpers.R")
 ```
 
@@ -36,6 +37,29 @@ whoop_cycle <- jsonlite::read_json(here("data", "whoop_cycle_data_batch.json"), 
 
 
 # Data cleaning
+
+```{r data-format analysis}
+summary(whoop_sleep)
+summary(whoop_recovery)
+```
+```{r data-format}
+# -------- Whoop Sleep --------
+sleep_data <- whoop_sleep %>%
+  mutate(
+    date     = as.Date(created_at), 
+    start_date = lubridate::ymd_hms(start), # sleep start as datetime
+    end_date   = lubridate::ymd_hms(end), # sleep end as datetime
+  ) %>%
+  select(-created_at, -start, -end)
+
+# -------- Whoop Recovery Nothing to do--------
+
+recovery_data <- whoop_recovery
+
+# @TODO: other data sets
+```
+
+
 ## Handling duplicates Data Errors and outliers, missing values
 
 ```{r missing-values analysis}
@@ -66,6 +90,7 @@ whoop_workout <- whoop_workout %>%
 
 ```{r data-cleaning analysis}
 
+# -------- Whoop Sleep --------
 # Whoop Sleep -> Nothing to do
 naniar::miss_var_summary(whoop_sleep)
 
@@ -137,12 +162,11 @@ nrow(whoop_cycle)
 # Calculate total actual sleep and sleep deficit
 sleep_clean <- sleep_clean %>%
   mutate(
-    # total actual sleep = deep + rem + light sleep combined
-    total_sleep_hours = total_deep_sleep_hours + total_rem_sleep_hours + total_light_sleep_hours,
+    sleep_duration = as.numeric(difftime(end_dt, start_dt, units = "hours")) # sleep duration in hours
     
     # sleep deficit = how much sleep was needed vs how much was actually gotten
     # negative means he got less sleep than needed
-    sleep_deficit = total_sleep_hours - baseline_hours
+    sleep_deficit = sleep_duration - baseline_hours
   )
 
 # ── Recovery transformations ───────────────────────────────
@@ -174,29 +198,37 @@ workout_clean <- workout_clean %>%
 
 ```
 
-
 # Data joining
 ```{r data-joining}
-# join data
-# ── Master dataset ─────────────────────────────────────────
-# Step 1: Join daily datasets (one row per day each)
-# recovery, sleep and cycle all have one row per day after deduplication
-whoop_daily <- recovery_clean %>%
-  left_join(sleep_clean, by = "date") %>%  # join sleep by date
-  left_join(cycle_clean, by = "date")      # join cycle by date
 
-# Step 2: Join workout — creates multiple rows per day
-# when your friend had multiple workouts on the same day
-whoop_master <- whoop_daily %>%
-  left_join(workout_clean, by = "date")    # join workout by date
+whoop_master <- whoop_cycle %>%
+  left_join(sleep_data, by = c("id" = "cycle_id"))
 
-# Final check
-dim(whoop_daily)   # 99 rows — one per day after deduplication
-dim(whoop_master)  # 151 rows — multiple workouts per day
-# Save master dataset to data folder for future use
-write.csv(whoop_master, here("data", "whoop_master.csv"), row.names = FALSE)
+whoop_master <- whoop_master %>%
+  left_join(whoop_recovery, by = c("id" = "cycle_id"))
 
 ```
+
+```{r workout-joining-1}
+workouts_per_cycle <- whoop_cycle %>%
+  left_join(
+    whoop_workout, 
+    join_by(start <= start, end >= end)
+  ) %>%
+  group_by(id.x, datum = as.Date(end.x)) %>% 
+  summarise(
+    n_workouts = sum(!is.na(id.y)),
+    total_workout_strain = sum(score.strain.y, na.rm = TRUE),
+    workout_types = paste(unique(na.omit(sport_name)), collapse = ", "),
+    .groups = "drop"
+  )
+```
+
+```{r workout-joining-2}
+whoop_master <- whoop_master %>%
+  left_join(workouts_per_cycle, by = c("id" = "id.x"))
+```
+
 
 # Data visualization
 ```{r data-visualization}
@@ -206,43 +238,11 @@ write.csv(whoop_master, here("data", "whoop_master.csv"), row.names = FALSE)
 ```
 
 ```{r old-code-monish}
-
-# ── Recovery ──────────────────────────────────────────────
-recovery_clean <- whoop_recovery %>%
-  mutate(date = as.Date(unlist(created_at))) %>%
-  bind_cols(
-    whoop_recovery$score %>%
-      mutate(
-        user_calibrating   = as.logical(unlist(user_calibrating)),
-        recovery_score     = as.numeric(unlist(recovery_score)),
-        resting_heart_rate = as.numeric(unlist(resting_heart_rate)),
-        hrv_rmssd_milli    = as.numeric(unlist(hrv_rmssd_milli)),
-        spo2_percentage    = as.numeric(unlist(spo2_percentage)),
-        skin_temp_celsius  = as.numeric(sapply(skin_temp_celsius, function(x) if(length(x) == 0) NA else x))
-      )
-  ) %>%
-  select(date, user_calibrating, recovery_score,
-         resting_heart_rate, hrv_rmssd_milli,
-         spo2_percentage, skin_temp_celsius) %>%
-  group_by(date) %>%          # group by date to handle duplicate scores
-  slice_tail(n = 1) %>%       # keep most recent score per day
-  ungroup()                   # release grouping
   
 # ── Sleep ──────────────────────────────────────────────────
 # Step 1: Remove naps and handle duplicate dates
 # WHOOP logs naps as separate records — we only want main sleep
 # If two main sessions exist on same date, keep the longest one
-sleep_main <- whoop_sleep %>%
-  filter(unlist(nap) == FALSE) %>% # keep only main sleep, remove naps
-  mutate(
-    date     = as.Date(unlist(created_at)), # convert timestamp to clean date
-    start_dt = as.POSIXct(unlist(start), format = "%Y-%m-%dT%H:%M:%S"), # sleep start as datetime
-    end_dt   = as.POSIXct(unlist(end), format = "%Y-%m-%dT%H:%M:%S"), # sleep end as datetime
-    duration = as.numeric(difftime(end_dt, start_dt, units = "hours")) # sleep duration in hours
-  ) %>%
-  group_by(date) %>% # group rows by date so we can compare sessions within same day
-  slice_max(duration, n = 1) %>% # keep only the longest sleep session per day
-  ungroup() # release the grouping so data frame works normally again
 
 # Step 2: Extract and clean sleep scores
 # sleep score has 3 parts:
