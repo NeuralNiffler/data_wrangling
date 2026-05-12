@@ -1,7 +1,17 @@
 library(httr)
 library(jsonlite)
+library(here)
 
 # --- HAUPTFUNKTION ---
+load_data <- function(datatype) {
+   filename <- .get_data_filename(datatype)
+   
+    whoop_data <- jsonlite::read_json(here("data", filename), simplifyVector = TRUE, flatten = TRUE)
+   
+    return(whoop_data)
+}
+
+
 get_whoop_records <- function(endpoint, max_records = 100, records_per_batch = 25) {
   base_url <- "https://api.prod.whoop.com/developer/v2"
   
@@ -133,4 +143,9 @@ get_whoop_token <- function() {
   saveRDS(token_data, token_path)
   
   return(token_data)
+}
+
+.get_data_filename <- function(datatype) {
+  
+  return(paste0("whoop_", datatype , "_data_batch.json"))
 }

@@ -1,0 +1,25 @@
+---
+title: "Tidy_Cycle"
+output: html_document
+---
+
+```{r import-packages}
+#| echo: false
+library(here)
+library(jsonlite)
+library(tidyverse)
+library(naniar)
+
+
+source("util/helpers.R")
+```
+
+```{r data_load}
+cycle_data <- load_data("cycle")
+```
+
+```{r}
+
+```
+
+
