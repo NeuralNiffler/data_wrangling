@@ -46,7 +46,7 @@ summary(whoop_recovery)
 # -------- Whoop Sleep --------
 sleep_data <- whoop_sleep %>%
   mutate(
-    date     = as.Date(created_at), 
+    date = as.Date(lubridate::ymd_hms(created_at)), # changed to lubridate to handle full timestamp
     start_date = lubridate::ymd_hms(start), # sleep start as datetime
     end_date   = lubridate::ymd_hms(end), # sleep end as datetime
   ) %>%
@@ -156,47 +156,63 @@ nrow(whoop_cycle)
 # Data transformation
 ## data combination (Time Offset), long-to-wide and vice versa, data reshaping, feature engineering
 
-```{r data-transformation}
-
+````{r data-transformation}
 # ── Sleep transformations ──────────────────────────────────
-# Calculate total actual sleep and sleep deficit
-sleep_clean <- sleep_clean %>%
+# We use sleep_data (not sleep_clean — that was the old variable name)
+# At this point naps are already removed from Chunk 9
+sleep_data <- sleep_data %>%
   mutate(
-    sleep_duration = as.numeric(difftime(end_dt, start_dt, units = "hours")) # sleep duration in hours
+    # How long was the sleep session in hours?
+    # end_date minus start_date gives us the difference
+    sleep_duration = as.numeric(difftime(end_date, start_date, units = "hours")),
     
-    # sleep deficit = how much sleep was needed vs how much was actually gotten
-    # negative means he got less sleep than needed
-    sleep_deficit = sleep_duration - baseline_hours
+    # How much sleep was needed vs how much was actually gotten
+    # Negative = slept less than needed
+    # Positive = slept more than needed
+    sleep_deficit = sleep_duration - (score.sleep_needed.baseline_milli / 3600000),
+    
+    # Convert sleep stage columns from milliseconds to hours
+    # WHOOP stores everything in milliseconds so divide by 3,600,000
+    total_in_bed_hours      = score.stage_summary.total_in_bed_time_milli          / 3600000,
+    total_awake_hours       = score.stage_summary.total_awake_time_milli           / 3600000,
+    total_light_sleep_hours = score.stage_summary.total_light_sleep_time_milli     / 3600000,
+    total_deep_sleep_hours  = score.stage_summary.total_slow_wave_sleep_time_milli / 3600000,
+    total_rem_sleep_hours   = score.stage_summary.total_rem_sleep_time_milli       / 3600000,
+    
+    # Total actual sleep = deep + rem + light combined
+    total_sleep_hours = total_deep_sleep_hours + 
+                        total_rem_sleep_hours  + 
+                        total_light_sleep_hours
   )
 
 # ── Recovery transformations ───────────────────────────────
 # Add recovery zone based on score
 # WHOOP uses: red (0-33), yellow (34-66), green (67-100)
-recovery_clean <- recovery_clean %>%
+# case_when() is like multiple if/then statements
+recovery_data <- recovery_data %>%
   mutate(
     recovery_zone = case_when(
-      recovery_score <= 33 ~ "red",    # body needs rest
-      recovery_score <= 66 ~ "yellow", # moderate day
-      TRUE                 ~ "green"   # ready to push hard
+      score.recovery_score <= 33 ~ "red",    # body needs rest
+      score.recovery_score <= 66 ~ "yellow", # moderate day
+      TRUE                       ~ "green"   # ready to push hard
     )
   )
 
-
 # ── Workout transformations ────────────────────────────────
 # Convert kilojoules to calories (1 kilojoule = 0.239 calories)
-# Rename columns to avoid confusion with cycle columns when joining
-workout_clean <- workout_clean %>%
+# Add workout_ prefix to avoid column name clashes when joining with cycle later
+whoop_workout <- whoop_workout %>%
   mutate(
-    calories = kilojoule * 0.239  # convert energy to more familiar unit
+    # convert energy to more familiar unit
+    calories = score.kilojoule * 0.239
   ) %>%
   rename(
-    workout_strain   = strain,              # rename to avoid clash with cycle strain
-    workout_avg_hr   = average_heart_rate,  # rename to avoid clash with cycle avg hr
-    workout_max_hr   = max_heart_rate,      # rename to avoid clash with cycle max hr
-    workout_kilojoule = kilojoule           # rename to avoid clash with cycle kilojoule
+    workout_strain    = score.strain,             # rename to avoid clash with cycle strain
+    workout_avg_hr    = score.average_heart_rate, # rename to avoid clash with cycle avg hr
+    workout_max_hr    = score.max_heart_rate,     # rename to avoid clash with cycle max hr
+    workout_kilojoule = score.kilojoule           # rename to avoid clash with cycle kilojoule
   )
-
-```
+````
 
 # Data joining
 ```{r data-joining}

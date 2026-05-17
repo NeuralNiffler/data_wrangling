@@ -149,3 +149,81 @@ get_whoop_token <- function() {
   
   return(paste0("whoop_", datatype , "_data_batch.json"))
 }
+
+# --- SLEEP CLEANING ---
+
+# --- SLEEP CLEANING ---
+# --- SLEEP CLEANING ---
+clean_sleep <- function(raw_sleep) {
+  
+  # ── Task 1: Fix empty lists and parse dates ───────────────
+  sleep <- raw_sleep %>%
+    mutate(across(where(is.list),
+                  ~ map(.x, ~ if(length(.x) == 0) NA else .x) %>%
+                    unlist())) %>%
+    mutate(
+      date       = as.Date(lubridate::ymd_hms(created_at)),
+      start_date = lubridate::ymd_hms(start),
+      end_date   = lubridate::ymd_hms(end)
+    ) %>%
+    select(-created_at, -start, -end)
+  
+  # ── Task 2: Remove naps ───────────────────────────────────
+  # WHOOP records naps as separate entries
+  # We only want main sleep sessions
+  sleep <- sleep %>%
+    filter(nap == FALSE)
+  
+  # ── Task 3: Handle duplicates ─────────────────────────────
+  # If two main sleep sessions exist on the same date
+  # Keep only the longest one — it's the most complete record
+  sleep <- sleep %>%
+    mutate(
+      duration = as.numeric(difftime(end_date, start_date, units = "hours"))
+    ) %>%
+    group_by(date) %>%
+    slice_max(duration, n = 1) %>%
+    ungroup()
+  
+  # ── Task 4: Extract sleep metrics ─────────────────────────
+  # Convert milliseconds to hours (divide by 3,600,000)
+  # Calculate derived metrics like deficit and total sleep
+  sleep <- sleep %>%
+    mutate(
+      # sleep duration in hours
+      sleep_duration = as.numeric(difftime(end_date, start_date, units = "hours")),
+      
+      # sleep deficit — negative means didn't sleep enough
+      sleep_deficit = sleep_duration - (score.sleep_needed.baseline_milli / 3600000),
+      
+      # convert sleep stages from milliseconds to hours
+      total_in_bed_hours      = score.stage_summary.total_in_bed_time_milli          / 3600000,
+      total_awake_hours       = score.stage_summary.total_awake_time_milli           / 3600000,
+      total_light_sleep_hours = score.stage_summary.total_light_sleep_time_milli     / 3600000,
+      total_deep_sleep_hours  = score.stage_summary.total_slow_wave_sleep_time_milli / 3600000,
+      total_rem_sleep_hours   = score.stage_summary.total_rem_sleep_time_milli       / 3600000,
+      
+      # total actual sleep = deep + rem + light combined
+      total_sleep_hours = total_deep_sleep_hours +
+        total_rem_sleep_hours  +
+        total_light_sleep_hours
+    ) %>%
+    
+    # ── Keep only useful columns ───────────────────────────
+    # Drop raw millisecond columns — we have hours versions now
+    select(
+      cycle_id, date, start_date, end_date,
+      sleep_duration, sleep_deficit,
+      total_in_bed_hours, total_awake_hours,
+      total_light_sleep_hours, total_deep_sleep_hours,
+      total_rem_sleep_hours, total_sleep_hours,
+      score.respiratory_rate,
+      score.sleep_performance_percentage,
+      score.sleep_consistency_percentage,
+      score.sleep_efficiency_percentage,
+      score.stage_summary.sleep_cycle_count,
+      score.stage_summary.disturbance_count
+    )
+  
+  return(sleep)
+}
