@@ -18,21 +18,30 @@ source("util/helpers.R")
 cycle_data <- load_data("cycle")
 ```
 
+## Datenbereinigung
+Da die Daten noch verschachtelt sind (leere Listen etc.), müssen diese noch noch bereinigt werden, damit wir die dann analysieren können:
 ```{r clean_data_structure}
  cycle_data <- sanitize_data_structure(cycle_data)
 ```
 
+Analyse n/a:
 ```{r}
 naniar::miss_var_summary(cycle_data)
 ```
+-> Macht keinen Sinn den drinzubehalten und Wert kann nicht imputiert werden -> Datensatz rausfiltern
+
 ```{r remove_missing_values}
 cycle_data <- cycle_data %>% filter(!is.na(end))
 ```
 
+Einträge mit gleichem start datum würden entfernt
 ```{r remove_duplicates}
 cycle_data <- cycle_data %>% distinct(start, .keep_all = TRUE)
 ```
 
+## Feature Engineering
+
+Lokale Zeit ermitteln für Cycle Periode:
 ```{r calc_local_time}
 cycle_data <- cycle_data %>%
   mutate(
@@ -41,6 +50,7 @@ cycle_data <- cycle_data %>%
   )
 ```
 
+Kilojoules in Kilokalorien umrechnen:
 ```{r }
 cycle_data <- cycle_data %>%
   mutate(
@@ -48,6 +58,7 @@ cycle_data <- cycle_data %>%
   )
 ```
 
+Nur relevante Spalten selektieren:
 ```{r select_only_relevant_columns}
 cycle_data_cleaned <- cycle_data %>%
   select(id, start_local, end_local,
@@ -55,6 +66,7 @@ cycle_data_cleaned <- cycle_data %>%
          score.strain, score.calories)
 ```
 
+Abspeichern:
 ```{r store_clean_data}
 write_rds(cycle_data_cleaned, file = here("data", "cleaned_cycle_data.rds"))
 ```

@@ -14,10 +14,13 @@ library(naniar)
 source("util/helpers.R")
 ```
 
+## Daten laden
 ```{r data_load}
 recovery_data <- load_data("recovery")
 ```
 
+## Datenbereinigung
+Da die Daten noch verschachtelt sind (leere Listen etc.), müssen diese noch noch bereinigt werden, damit wir die dann analysieren können:
 ```{r clean_data_structure}
  recovery_data <- sanitize_data_structure(recovery_data)
 ```
@@ -25,10 +28,11 @@ recovery_data <- load_data("recovery")
 ```{r}
 naniar::miss_var_summary(recovery_data)
 ```
+Analyse:
 ```{r}
 no_skin_temp <- recovery_data %>% filter(is.na(score.skin_temp_celsius))
 ```
-Datensatz sieht sonst gut aus -> NA substituieren mit Mittelwert
+-> Datensatz sieht sonst gut aus -> NA imputieren mit Mittelwert
 
 ```{r}
 recovery_data <- recovery_data %>%
@@ -36,12 +40,19 @@ recovery_data <- recovery_data %>%
            replace_na(score.skin_temp_celsius,  median(score.skin_temp_celsius, na.rm = TRUE))) 
 ```
 
-```{r}
-recovery_data <- recovery_data %>%
-  rename(recovery_hrv = score.hrv_rmssd_milli)
+Einträge mit gleicher cycle_id würden entfernt
+```{r remove_duplicates}
+recovery_data <- recovery_data %>% distinct(cycle_id, .keep_all = TRUE)
 ```
 
+## Feature Engineering
+Variable umbennenen -> sprechender
+```{r}
+recovery_data <- recovery_data %>%
+  rename(recovery_heart_rate_variability = score.hrv_rmssd_milli)
+```
 
+recovery_zone (Ampel) je nach recovery_score:
 ```{r feature_engineering}
 
 recovery_data <- recovery_data %>%
@@ -54,16 +65,15 @@ recovery_data <- recovery_data %>%
   )
 ```
 
-
+Nur relevante Spalten selektieren:
 ```{r select_only_relevant_columns}
 recovery_data_cleaned <- recovery_data %>%
   select( cycle_id, sleep_id,
          score.recovery_score, score.resting_heart_rate, score.spo2_percentage, 
-         recovery_hrv, score.skin_temp_celsius, recovery_zone)
+         recovery_heart_rate_variability, score.skin_temp_celsius, recovery_zone)
 ```
 
-
-
+Abspeichern:
 ```{r store_clean_data}
 write_rds(recovery_data_cleaned, file = here("data", "cleaned_recovery_data.rds"))
 ```
