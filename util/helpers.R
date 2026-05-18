@@ -1,8 +1,11 @@
 library(httr)
 library(jsonlite)
 library(here)
+library(lubridate)
+library(dplyr)
 
 # --- HAUPTFUNKTION ---
+
 load_data <- function(datatype) {
    filename <- .get_data_filename(datatype)
    
@@ -11,6 +14,47 @@ load_data <- function(datatype) {
     return(whoop_data)
 }
 
+to_datetime <- function(variable) {
+  return(lubridate::ymd_hms(variable) )
+}
+
+to_date <- function(variable) {
+  return(lubridate::ymd(variable))
+}
+
+apply_timezone_offset <- function(utc_timestamp, offset_str) {
+  
+  dt_utc <- to_datetime(utc_timestamp)
+  
+  # 2. Vorzeichen bestimmen
+  sign <- ifelse(str_sub(offset_str, 1, 1) == "-", -1, 1)
+  
+  # 3. Stunden und Minuten extrahieren
+  clean_offset <- str_remove(offset_str, "^[+-]")
+  parts <- str_split_fixed(clean_offset, ":", 2)
+  hours <- as.numeric(parts[, 1])
+  minutes <- as.numeric(parts[, 2])
+  
+  # 4. Offset in Sekunden umrechnen
+  offset_seconds <- sign * ((hours * 3600) + (minutes * 60))
+  
+  # 5. Sekunden addieren
+  dt_local <- dt_utc + seconds(offset_seconds)
+  
+  return(dt_local)
+}
+
+kj_to_calorie <- function(kilojoules) {
+  return(kilojoules * 0.239006)
+}
+
+sanitize_data_structure <- function(df) {
+  df %>%
+    # 1. Leere Listen flachklopfen
+    mutate(across(where(is.list), ~ map(.x, ~ if(length(.x) == 0) NA else .x) %>% unlist())) %>%
+    # 2. Leere Text-Artefakte bereinigen
+    mutate(across(where(is.character), ~na_if(.x, "character(0)")))
+}
 
 get_whoop_records <- function(endpoint, max_records = 100, records_per_batch = 25) {
   base_url <- "https://api.prod.whoop.com/developer/v2"
