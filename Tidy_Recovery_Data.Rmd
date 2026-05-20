@@ -45,17 +45,42 @@ Einträge mit gleicher cycle_id würden entfernt
 recovery_data <- recovery_data %>% distinct(cycle_id, .keep_all = TRUE)
 ```
 
+Outlier Detection
+```{r}
+ result <- outlier_detection(recovery_data)
+```
+
+Analyse:
+```{r}
+outlier_rows_resting_hear_rate <- recovery_data %>% filter(score.resting_heart_rate %in% c(88) ) #da hate ich einen recovery score von 4 scheint ein aussreisser zu sein -> löschen
+
+outlier_rows_spo2 <- recovery_data %>% filter(score.spo2_percentage < 92.2000) # der ist nur sehr wenig weg vom nächsten -> so lassen
+
+outlier_rows_skin_temp <- recovery_data %>% filter(score.skin_temp_celsius <= 32) # die sind auch ganz Nahe an anderen Werten -> so lassen
+```
+
+Umsetzung basierend auf Analyse:
+```{r}
+recovery_data <- recovery_data %>% filter(!sleep_id == outlier_rows_resting_hear_rate$sleep_id)
+```
+
+Datenbereinigung abgeschlossen:
+```{r}
+recovery_data_cleaned <- recovery_data_data
+```
+
+
 ## Feature Engineering
 Variable umbennenen -> sprechender
 ```{r}
-recovery_data <- recovery_data %>%
+recovery_data_cleaned <- recovery_data_cleaned %>%
   rename(recovery_heart_rate_variability = score.hrv_rmssd_milli)
 ```
 
 recovery_zone (Ampel) je nach recovery_score:
 ```{r feature_engineering}
 
-recovery_data <- recovery_data %>%
+recovery_data_cleaned <- recovery_data_cleaned %>%
   mutate(
     recovery_zone = case_when(
       score.recovery_score <= 33 ~ "red",    
@@ -67,7 +92,7 @@ recovery_data <- recovery_data %>%
 
 Nur relevante Spalten selektieren:
 ```{r select_only_relevant_columns}
-recovery_data_cleaned <- recovery_data %>%
+recovery_data_cleaned <- recovery_data_cleaned %>%
   select( cycle_id, sleep_id,
          score.recovery_score, score.resting_heart_rate, score.spo2_percentage, 
          recovery_heart_rate_variability, score.skin_temp_celsius, recovery_zone)
