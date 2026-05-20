@@ -22,6 +22,19 @@ to_date <- function(variable) {
   return(lubridate::ymd(variable))
 }
 
+outlier_detection <- function(dataset) {
+  num_data <- dataset %>%
+    select(where(is.numeric), -ends_with("id", ignore.case = TRUE))
+  
+  outliers_list <- lapply(num_data, function(x) boxplot.stats(x)$out)
+  
+  conf_list <- lapply(num_data, function(x) boxplot.stats(x)$conf)
+  
+  stats_list <- lapply(num_data, function(x) boxplot.stats(x))
+  
+  return(list(outliers = outliers_list, conf = conf_list, stats = stats_list))
+}
+
 apply_timezone_offset <- function(utc_timestamp, offset_str) {
   
   dt_utc <- to_datetime(utc_timestamp)

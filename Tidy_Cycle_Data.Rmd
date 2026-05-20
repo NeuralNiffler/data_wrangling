@@ -9,11 +9,13 @@ library(here)
 library(jsonlite)
 library(tidyverse)
 library(naniar)
+library(purrr)
 
 
 source("util/helpers.R")
 ```
 
+## Daten laden
 ```{r data_load}
 cycle_data <- load_data("cycle")
 ```
@@ -39,11 +41,30 @@ Einträge mit gleichem start datum würden entfernt
 cycle_data <- cycle_data %>% distinct(start, .keep_all = TRUE)
 ```
 
+Outlier Detection
+```{r}
+ result <- outlier_detection(cycle_data)
+```
+
+
+```{r}
+outlier_rows_average_heart_rate <- cycle_data %>% filter(score.average_heart_rate %in% c(91,63) ) #war ein high strength als auch ein low strength tag
+
+outlier_rows_kilojoule <- cycle_data %>% filter(score.kilojoule > 11000) #waren 2 high strenght tage
+```
+-> Werte sind plausibel
+
+Datenbereinigung abgeschlossen:
+```{r}
+cycle_data_cleaned <- cycle_data
+```
+
+
 ## Feature Engineering
 
 Lokale Zeit ermitteln für Cycle Periode:
 ```{r calc_local_time}
-cycle_data <- cycle_data %>%
+cycle_data_cleaned <- cycle_data_cleaned %>%
   mutate(
     start_local = apply_timezone_offset(start, timezone_offset),
     end_local   = apply_timezone_offset(end, timezone_offset)
@@ -52,7 +73,7 @@ cycle_data <- cycle_data %>%
 
 Kilojoules in Kilokalorien umrechnen:
 ```{r }
-cycle_data <- cycle_data %>%
+cycle_data_cleaned <- cycle_data_cleaned %>%
   mutate(
     score.calories = kj_to_calorie(score.kilojoule)
   )
@@ -60,7 +81,7 @@ cycle_data <- cycle_data %>%
 
 Nur relevante Spalten selektieren:
 ```{r select_only_relevant_columns}
-cycle_data_cleaned <- cycle_data %>%
+cycle_data_cleaned <- cycle_data_cleaned %>%
   select(id, start_local, end_local,
          score.strain, score.average_heart_rate, score.max_heart_rate,
          score.strain, score.calories)
