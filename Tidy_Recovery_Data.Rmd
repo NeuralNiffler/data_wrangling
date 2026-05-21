@@ -66,7 +66,7 @@ recovery_data <- recovery_data %>% filter(!sleep_id == outlier_rows_resting_hear
 
 Datenbereinigung abgeschlossen:
 ```{r}
-recovery_data_cleaned <- recovery_data_data
+recovery_data_cleaned <- recovery_data
 ```
 
 
