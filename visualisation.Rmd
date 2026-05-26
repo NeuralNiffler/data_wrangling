@@ -18,7 +18,8 @@ whoop_master <- read.csv(here("data", "whoop_master.csv"))
 
 # make sure date is proper date format
 whoop_master <- whoop_master %>%
-  mutate(date = as.Date(date))
+  mutate(date = as.Date(date)) %>%
+  filter(!is.na(date)) 
 
 # define WHOOP zone colours used consistently across all plots
 zone_colours <- c("red" = "#E8453C", "yellow" = "#F5A623", "green" = "#4CAF50")
@@ -136,19 +137,19 @@ ggplot(whoop_master, aes(x = total_sleep_hours, y = score.recovery_score)) +
 # Lower HRV  = body is under stress or fatigued
 # Question: is HRV improving or declining over 3 months?
 
-ggplot(whoop_master, aes(x = date, y = score.hrv_rmssd_milli)) +
+ggplot(whoop_master, aes(x = date, y = recovery_heart_rate_variability)) +
 
   # horizontal dotted line at overall average HRV
   # helps see which days are above or below normal for this person
-  geom_hline(yintercept = mean(whoop_master$score.hrv_rmssd_milli, na.rm = TRUE),
+  geom_hline(yintercept = mean(whoop_master$recovery_heart_rate_variability, na.rm = TRUE),
              linetype = "dotted", colour = "grey50", linewidth = 0.8) +
 
   # label the average line with the actual value
   annotate("text",
            x     = min(whoop_master$date, na.rm = TRUE),
-           y     = mean(whoop_master$score.hrv_rmssd_milli, na.rm = TRUE) + 1.5,
+           y     = mean(whoop_master$recovery_heart_rate_variability, na.rm = TRUE) + 1.5,
            label = paste0("Avg: ",
-                          round(mean(whoop_master$score.hrv_rmssd_milli,
+                          round(mean(whoop_master$recovery_heart_rate_variability,
                                      na.rm = TRUE), 1), " ms"),
            colour = "grey50", size = 3, hjust = 0) +
 
@@ -216,8 +217,8 @@ p_recovery <- ggplot(whoop_master,
 
 # ── Panel 2: HRV Trend ────────────────────────────────────
 p_hrv <- ggplot(whoop_master,
-                aes(x = date, y = score.hrv_rmssd_milli)) +
-  geom_hline(yintercept = mean(whoop_master$score.hrv_rmssd_milli,
+                aes(x = date, y = recovery_heart_rate_variability)) +
+  geom_hline(yintercept = mean(whoop_master$recovery_heart_rate_variability,
                                 na.rm = TRUE),
              linetype = "dotted", colour = "grey50") +
   geom_line(colour = "grey75", linewidth = 0.5) +
