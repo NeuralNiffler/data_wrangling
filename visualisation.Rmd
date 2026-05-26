@@ -1,0 +1,297 @@
+---
+title: "WHOOP Visualisations"
+author: "Monish Pahwa"
+output: html_document
+---
+
+```{r setup}
+#| echo: false
+library(here)
+library(tidyverse)
+library(ggplot2)
+library(patchwork)
+
+source("util/helpers.R")
+
+# load the master dataset saved by notebook.Rmd
+whoop_master <- read.csv(here("data", "whoop_master.csv"))
+
+# make sure date is proper date format
+whoop_master <- whoop_master %>%
+  mutate(date = as.Date(date))
+
+# define WHOOP zone colours used consistently across all plots
+zone_colours <- c("red" = "#E8453C", "yellow" = "#F5A623", "green" = "#4CAF50")
+```
+
+```{r plot-recovery-over-time}
+# ── Plot 1: Recovery Score Over Time ──────────────────────
+# Shows how recovery changed across the 3 months
+# Each dot = one day, coloured by zone (red/yellow/green)
+# Dashed line = smoothed trend so we can see overall direction
+# Shaded bands show which zone each score falls in
+
+ggplot(whoop_master, aes(x = date, y = score.recovery_score)) +
+
+  # zone bands in background — shows which zone each day falls in
+  annotate("rect", xmin = as.Date(-Inf), xmax = as.Date(Inf),
+           ymin = 0,  ymax = 33,  fill = "#E8453C", alpha = 0.1) +
+  annotate("rect", xmin = as.Date(-Inf), xmax = as.Date(Inf),
+           ymin = 34, ymax = 66,  fill = "#F5A623", alpha = 0.1) +
+  annotate("rect", xmin = as.Date(-Inf), xmax = as.Date(Inf),
+           ymin = 67, ymax = 100, fill = "#4CAF50", alpha = 0.1) +
+
+  # zone labels on the right side of the chart
+  annotate("text", x = max(whoop_master$date, na.rm = TRUE),
+           y = 16,  label = "Red",    colour = "#E8453C", fontface = "bold", hjust = 1) +
+  annotate("text", x = max(whoop_master$date, na.rm = TRUE),
+           y = 50,  label = "Yellow", colour = "#F5A623", fontface = "bold", hjust = 1) +
+  annotate("text", x = max(whoop_master$date, na.rm = TRUE),
+           y = 83,  label = "Green",  colour = "#4CAF50", fontface = "bold", hjust = 1) +
+
+  # grey line connecting the dots — shows day to day variation
+  geom_line(colour = "grey70") +
+
+  # trend line — loess smoothing shows overall direction
+  # span = 0.4 means fairly smooth, not too wiggly
+  geom_smooth(method = "loess", span = 0.4,
+              colour = "grey30", se = FALSE,
+              linewidth = 1, linetype = "dashed") +
+
+  # coloured dots for each day — colour = recovery zone
+  geom_point(aes(colour = recovery_zone), size = 2.5) +
+
+  # use our custom WHOOP zone colours
+  scale_colour_manual(values = zone_colours, name = "Zone") +
+
+  # date axis every 2 weeks in "Jan 15" format
+  scale_x_date(date_breaks = "2 weeks", date_labels = "%b %d") +
+
+  # y axis 0 to 100 with labels at zone boundaries
+  scale_y_continuous(limits = c(0, 100), breaks = c(0, 33, 66, 100)) +
+
+  labs(
+    title    = "Recovery Score Over Time",
+    subtitle = "Dashed line = trend | Shaded bands = zones",
+    x        = NULL,
+    y        = "Recovery Score"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title       = element_text(face = "bold", size = 14),
+    plot.subtitle    = element_text(colour = "grey40", size = 10),
+    panel.grid.minor = element_blank(),
+    legend.position  = "none"  # zones already labelled directly on chart
+  )
+```
+
+```{r plot-recovery-vs-sleep}
+# ── Plot 2: Recovery Score vs Sleep Duration ───────────────
+# Scatter plot — each dot = one day
+# X axis = how many hours slept that night
+# Y axis = recovery score the next morning
+# Question: does more sleep = better recovery?
+
+ggplot(whoop_master, aes(x = total_sleep_hours, y = score.recovery_score)) +
+
+  # each dot = one day, coloured by recovery zone
+  # alpha = 0.7 makes dots slightly transparent
+  # so overlapping dots are still visible
+  geom_point(aes(colour = recovery_zone), size = 3, alpha = 0.7) +
+
+  # linear regression trend line (method = "lm")
+  # shows the overall direction of the relationship
+  # se = TRUE shows grey confidence interval band around the line
+  geom_smooth(method = "lm", colour = "grey30",
+              se = TRUE, fill = "grey80", linewidth = 1) +
+
+  # vertical reference line at 7 hours — minimum recommended sleep
+  geom_vline(xintercept = 7, linetype = "dashed",
+             colour = "grey50", linewidth = 0.7) +
+  annotate("text", x = 7.1, y = 5,
+           label = "7hr minimum", colour = "grey50", size = 3, hjust = 0) +
+
+  # use our custom WHOOP zone colours
+  scale_colour_manual(values = zone_colours, name = "Recovery Zone") +
+
+  labs(
+    title    = "Does More Sleep Lead to Better Recovery?",
+    subtitle = "Each dot = one day | Line = trend | Grey band = confidence interval",
+    x        = "Total Sleep Hours",
+    y        = "Recovery Score (0-100)"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title       = element_text(face = "bold", size = 14),
+    plot.subtitle    = element_text(colour = "grey40", size = 10),
+    panel.grid.minor = element_blank(),
+    legend.position  = "bottom"
+  )
+```
+
+```{r plot-hrv-trend}
+# ── Plot 3: HRV Trend Over Time ────────────────────────────
+# HRV = Heart Rate Variability measured in milliseconds
+# Higher HRV = body is more recovered and adaptable
+# Lower HRV  = body is under stress or fatigued
+# Question: is HRV improving or declining over 3 months?
+
+ggplot(whoop_master, aes(x = date, y = score.hrv_rmssd_milli)) +
+
+  # horizontal dotted line at overall average HRV
+  # helps see which days are above or below normal for this person
+  geom_hline(yintercept = mean(whoop_master$score.hrv_rmssd_milli, na.rm = TRUE),
+             linetype = "dotted", colour = "grey50", linewidth = 0.8) +
+
+  # label the average line with the actual value
+  annotate("text",
+           x     = min(whoop_master$date, na.rm = TRUE),
+           y     = mean(whoop_master$score.hrv_rmssd_milli, na.rm = TRUE) + 1.5,
+           label = paste0("Avg: ",
+                          round(mean(whoop_master$score.hrv_rmssd_milli,
+                                     na.rm = TRUE), 1), " ms"),
+           colour = "grey50", size = 3, hjust = 0) +
+
+  # thin grey line connecting all daily HRV values
+  # shows the day to day variation (very up and down!)
+  geom_line(colour = "grey75", linewidth = 0.5) +
+
+  # blue smoothed trend line shows the overall direction
+  # se = TRUE shows confidence band — wider band = more uncertainty
+  # span = 0.3 means relatively responsive to local changes
+  geom_smooth(method = "loess", span = 0.3,
+              colour = "#3F51B5", se = TRUE,
+              fill = "#3F51B5", alpha = 0.15,
+              linewidth = 1.2) +
+
+  # date axis every 2 weeks
+  scale_x_date(date_breaks = "2 weeks", date_labels = "%b %d") +
+
+  labs(
+    title    = "Heart Rate Variability (HRV) Over Time",
+    subtitle = "Higher = more recovered | Blue line = trend | Dotted = average",
+    x        = NULL,
+    y        = "HRV RMSSD (ms)"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title       = element_text(face = "bold", size = 14),
+    plot.subtitle    = element_text(colour = "grey40", size = 10),
+    panel.grid.minor = element_blank(),
+    legend.position  = "none"
+  )
+```
+
+```{r plot-dashboard}
+# ── Plot 4: Performance Dashboard ─────────────────────────
+# Combines 4 key metrics in one view using patchwork
+# Top left:     Recovery score over time
+# Top right:    HRV trend over time
+# Bottom left:  Sleep duration over time
+# Bottom right: Monthly zone summary (bar chart)
+# This gives Robin a quick overview of all key health metrics
+
+# ── Panel 1: Recovery Score ────────────────────────────────
+p_recovery <- ggplot(whoop_master,
+                     aes(x = date, y = score.recovery_score)) +
+  # zone background bands
+  annotate("rect", xmin = as.Date(-Inf), xmax = as.Date(Inf),
+           ymin = 0,  ymax = 33,  fill = "#E8453C", alpha = 0.1) +
+  annotate("rect", xmin = as.Date(-Inf), xmax = as.Date(Inf),
+           ymin = 34, ymax = 66,  fill = "#F5A623", alpha = 0.1) +
+  annotate("rect", xmin = as.Date(-Inf), xmax = as.Date(Inf),
+           ymin = 67, ymax = 100, fill = "#4CAF50", alpha = 0.1) +
+  geom_line(colour = "grey75", linewidth = 0.5) +
+  geom_smooth(method = "loess", span = 0.4,
+              colour = "#4CAF50", se = FALSE, linewidth = 1) +
+  geom_point(aes(colour = recovery_zone), size = 1.5, alpha = 0.8) +
+  scale_colour_manual(values = zone_colours) +
+  scale_x_date(date_breaks = "1 month", date_labels = "%b") +
+  scale_y_continuous(limits = c(0, 100)) +
+  labs(title = "Recovery Score", x = NULL, y = "Score (0-100)") +
+  theme_minimal() +
+  theme(legend.position  = "none",
+        plot.title       = element_text(face = "bold"),
+        panel.grid.minor = element_blank())
+
+# ── Panel 2: HRV Trend ────────────────────────────────────
+p_hrv <- ggplot(whoop_master,
+                aes(x = date, y = score.hrv_rmssd_milli)) +
+  geom_hline(yintercept = mean(whoop_master$score.hrv_rmssd_milli,
+                                na.rm = TRUE),
+             linetype = "dotted", colour = "grey50") +
+  geom_line(colour = "grey75", linewidth = 0.5) +
+  geom_smooth(method = "loess", span = 0.4,
+              colour = "#3F51B5", se = FALSE, linewidth = 1) +
+  scale_x_date(date_breaks = "1 month", date_labels = "%b") +
+  labs(title = "HRV Trend", x = NULL, y = "HRV RMSSD (ms)") +
+  theme_minimal() +
+  theme(legend.position  = "none",
+        plot.title       = element_text(face = "bold"),
+        panel.grid.minor = element_blank())
+
+# ── Panel 3: Sleep Duration ────────────────────────────────
+p_sleep <- ggplot(whoop_master,
+                  aes(x = date, y = total_sleep_hours)) +
+  # red dashed line at 7 hours = minimum recommended sleep
+  geom_hline(yintercept = 7, linetype = "dashed",
+             colour = "#E8453C", linewidth = 0.7) +
+  annotate("text",
+           x     = min(whoop_master$date, na.rm = TRUE),
+           y     = 7.3, label = "7hr min",
+           colour = "#E8453C", size = 2.5, hjust = 0) +
+  geom_line(colour = "grey75", linewidth = 0.5) +
+  geom_smooth(method = "loess", span = 0.4,
+              colour = "#1A237E", se = FALSE, linewidth = 1) +
+  scale_x_date(date_breaks = "1 month", date_labels = "%b") +
+  labs(title = "Sleep Duration", x = NULL, y = "Hours") +
+  theme_minimal() +
+  theme(legend.position  = "none",
+        plot.title       = element_text(face = "bold"),
+        panel.grid.minor = element_blank())
+
+# ── Panel 4: Monthly Zone Summary ─────────────────────────
+# Count how many days fell in each zone per month
+# filter NA dates first to avoid NA bar in chart
+# sort months correctly using ordered factor
+monthly_zones <- whoop_master %>%
+  filter(!is.na(recovery_zone)) %>%
+  filter(!is.na(date)) %>%              # remove rows with no date → avoids NA bar
+  mutate(
+    month       = floor_date(date, "month"),
+    # create ordered factor so months appear in correct chronological order
+    month_label = factor(format(month, "%b %Y"),
+                         levels = format(sort(unique(floor_date(date, "month"))),
+                                         "%b %Y"))
+  ) %>%
+  count(month_label, recovery_zone) %>%
+  # order zones so red is at bottom, green at top of stacked bar
+  mutate(recovery_zone = factor(recovery_zone,
+                                levels = c("red", "yellow", "green")))
+
+p_zones <- ggplot(monthly_zones,
+                  aes(x = month_label, y = n, fill = recovery_zone)) +
+  # stacked bar — each section = days in that zone
+  geom_col(position = "stack", alpha = 0.85) +
+  scale_fill_manual(values = zone_colours, name = "Zone") +
+  labs(title = "Monthly Zone Summary", x = NULL, y = "Days") +
+  theme_minimal() +
+  theme(plot.title       = element_text(face = "bold"),
+        panel.grid.minor = element_blank(),
+        legend.position  = "bottom")
+
+# ── Combine all 4 panels ───────────────────────────────────
+# patchwork syntax:
+# | = place side by side
+# / = place one above the other
+# result: 2x2 grid of plots
+(p_recovery | p_hrv) / (p_sleep | p_zones) +
+  plot_annotation(
+    title    = "WHOOP Performance Dashboard",
+    subtitle = "Dec 2025 → Mar 2026 | Recovery · HRV · Sleep · Zone Summary",
+    theme    = theme(
+      plot.title    = element_text(face = "bold", size = 16),
+      plot.subtitle = element_text(colour = "grey40", size = 11)
+    )
+  )
+```
