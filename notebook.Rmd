@@ -17,7 +17,7 @@ source("util/helpers.R")
 #| eval: false
 sleep_data_batch <- helpers::get_whoop_records(endpoint = "sleep", max_records = 100)
 workout_data_batch <- helpers::get_whoop_records(endpoint = "workout", max_records = 100)
-recovery_data_batch <- helper::get_whoop_records(endpoint = "recovery", max_records = 100)
+recovery_data_batch <- helpers::get_whoop_records(endpoint = "recovery", max_records = 100)
 cycle_data_batch <- helpers::get_whoop_records(endpoint = "cycle", max_records = 100)
 
 jsonlite::write_json(sleep_data_batch, here("data", "whoop_sleep_data_batch.json"), pretty = TRUE)
@@ -48,8 +48,9 @@ summary(whoop_recovery)
 sleep_data <- clean_sleep(whoop_sleep)
 
 # -------- Whoop Recovery --------
-# sanitize structure first so columns are usable
-recovery_data <- sanitize_data_structure(whoop_recovery)
+# load Robin's properly cleaned recovery data
+# Tidy_Recovery_Data.Rmd must be run first to generate this file
+recovery_data <- readRDS(here("data", "cleaned_recovery_data.rds"))
 
 # -------- Whoop Cycle --------
 # sanitize structure first so columns are usable
@@ -79,16 +80,9 @@ naniar::vis_miss(whoop_workout)
 naniar::miss_var_summary(whoop_sleep)
 
 # -------- Whoop Recovery --------
-# Temperature is missing for one entry
-naniar::miss_var_summary(whoop_recovery)
 
-whoop_recovery %>% filter(is.na(score.skin_temp_celsius))
-
-## Entry looks good otherwise -> Value impute (median)
-recovery_data <- recovery_data %>%
-  mutate(score.skin_temp_celsius = replace_na(score.skin_temp_celsius,
-                                              median(score.skin_temp_celsius, na.rm = TRUE)))
-
+# Already cleaned by Tidy_Recovery_Data.Rmd
+# including missing value imputation and outlier removal
 naniar::miss_var_summary(recovery_data)
 
 # -------- Whoop Workout --------
@@ -138,18 +132,11 @@ nrow(whoop_cycle)
 # Already handled by clean_sleep() in helpers.R
 # No sleep code needed here!
 
+
 # ── Recovery transformations ───────────────────────────────
-# Add recovery zone based on score
-# WHOOP uses: red (0-33), yellow (34-66), green (67-100)
-# case_when() is like multiple if/then statements
-recovery_data <- recovery_data %>%
-  mutate(
-    recovery_zone = case_when(
-      score.recovery_score <= 33 ~ "red",    # body needs rest
-      score.recovery_score <= 66 ~ "yellow", # moderate day
-      TRUE                       ~ "green"   # ready to push hard
-    )
-  )
+# Already handled by Tidy_Recovery_Data.Rmd
+# recovery_zone already added by Robin's cleaning pipeline
+# No recovery code needed here!
 
 # ── Workout transformations ────────────────────────────────
 # Rename columns first to avoid clashes when joining with cycle later
@@ -189,14 +176,14 @@ whoop_master <- whoop_cycle %>%
   # Step 2 — join with recovery
   left_join(
     # only keep useful recovery columns
+    # note: Robin renamed hrv column to recovery_heart_rate_variability
     recovery_data %>%
       select(cycle_id, recovery_zone,
              score.recovery_score,
              score.resting_heart_rate,
-             score.hrv_rmssd_milli,
+             recovery_heart_rate_variability,
              score.spo2_percentage,
-             score.skin_temp_celsius,
-             score.user_calibrating),
+             score.skin_temp_celsius),
     by = c("id" = "cycle_id")
   )
 ```
