@@ -1,0 +1,255 @@
+---
+title: "Tidy_Sleep_Data"
+output: html_document
+---
+
+```{r import-packages}
+#| echo: false
+# Load all required libraries for this analysis
+# here        → file path management (works on any computer)
+# jsonlite    → reading JSON files from WHOOP API
+# tidyverse   → data manipulation and visualisation toolkit
+# naniar      → missing value analysis and visualisation
+# purrr       → list manipulation (used by sanitize function)
+library(here)
+library(jsonlite)
+library(tidyverse)
+library(naniar)
+library(purrr)
+
+# Load custom helper functions written for this project
+# Includes: load_data(), sanitize_data_structure(),
+#           outlier_detection(), apply_timezone_offset()
+source("util/helpers.R")
+```
+
+## Load Data
+
+```{r data_load}
+# Load raw sleep data from JSON file saved by the WHOOP API
+# load_data() is a helper function that handles the file path
+# and JSON parsing automatically — see util/helpers.R
+sleep_data <- load_data("sleep")
+```
+
+## Data Cleaning
+
+### Step 1 — Fix Data Structure
+
+```{r clean_data_structure}
+# WHOOP returns some columns as nested lists with empty values []
+# sanitize_data_structure() does two things:
+# 1. Converts empty lists [] to proper NA values
+# 2. Converts text artefacts "character(0)" to NA
+# This must run before any other cleaning or analysis
+sleep_data <- sanitize_data_structure(sleep_data)
+```
+
+### Step 2 — Check Missing Values
+
+```{r missing_values_analysis}
+# Generate a summary of missing values per column
+# Shows: column name, number of NAs, percentage of NAs
+# Sleep data should have no missing values
+naniar::miss_var_summary(sleep_data)
+```
+
+Sleep data has no missing values — nothing to fix here!
+
+### Step 3 — Remove Naps
+
+```{r remove_naps}
+# WHOOP records naps as separate sleep sessions alongside main sleep
+# For this analysis we only want main overnight sleep sessions
+# We save naps in a separate variable in case needed for future analysis
+
+# Save naps separately — may be useful for future nap analysis
+sleep_naps <- sleep_data %>% filter(nap == TRUE)
+
+# Keep only main sleep sessions
+sleep_data <- sleep_data %>% filter(nap == FALSE)
+
+cat("Naps removed:        ", nrow(sleep_naps), "\n")
+cat("Main sleep sessions: ", nrow(sleep_data), "\n")
+```
+
+### Step 4 — Remove Duplicate Sessions
+
+```{r remove_duplicates}
+# Each cycle day should have exactly one main sleep session
+# If two sessions share the same cycle_id we keep only the first one
+# distinct() keeps the first occurrence of each unique cycle_id
+# .keep_all = TRUE preserves all other columns
+sleep_data <- sleep_data %>%
+  distinct(cycle_id, .keep_all = TRUE)
+
+cat("Sleep sessions after deduplication: ", nrow(sleep_data), "\n")
+```
+
+### Step 5 — Outlier Detection
+
+```{r outlier_detection}
+# Run automated outlier detection on all numeric columns
+# Uses the interquartile range (IQR) method via boxplot statistics
+# Returns a list of outlier values, confidence intervals and summary stats
+result <- outlier_detection(sleep_data)
+```
+
+```{r outlier_analysis}
+# Investigate potential outliers found above
+# Very short sleep sessions (under 3 hours) — possible recording error
+# Very long sleep sessions (over 13 hours) — possible recording error
+outlier_rows_duration <- sleep_data %>%
+  filter(score.stage_summary.total_in_bed_time_milli / 3600000 < 3 |
+         score.stage_summary.total_in_bed_time_milli / 3600000 > 13)
+
+# Very low sleep performance (under 20%) — unusual but possible
+outlier_rows_performance <- sleep_data %>%
+  filter(score.sleep_performance_percentage < 20)
+
+# Print findings
+cat("Duration outliers found:    ", nrow(outlier_rows_duration), "\n")
+cat("Performance outliers found: ", nrow(outlier_rows_performance), "\n")
+```
+
+All outlier values are physiologically plausible — keeping them in the dataset.
+
+```{r cleaning_complete}
+# Data cleaning is complete
+# Save into a new variable to clearly mark the transition
+# from raw cleaning to feature engineering
+sleep_data_cleaned <- sleep_data
+```
+
+## Feature Engineering
+
+### Step 6 — Convert to Local Time
+
+```{r calc_local_time}
+# WHOOP stores all timestamps in UTC (Coordinated Universal Time)
+# We convert to local Swiss time using the timezone_offset column
+# This gives more meaningful times e.g. "went to bed at 22:00"
+# rather than "went to bed at 21:00 UTC"
+# apply_timezone_offset() is a helper function in util/helpers.R
+sleep_data_cleaned <- sleep_data_cleaned %>%
+  mutate(
+    start_local = apply_timezone_offset(start, timezone_offset),
+    end_local   = apply_timezone_offset(end,   timezone_offset)
+  )
+```
+
+### Step 7 — Calculate Sleep Duration
+
+```{r calc_sleep_duration}
+# Calculate how long each sleep session lasted in hours
+# difftime() calculates the difference between two datetime values
+# units = "hours" returns the result in hours
+# as.numeric() converts the result to a plain number for calculations
+sleep_data_cleaned <- sleep_data_cleaned %>%
+  mutate(
+    sleep_duration = as.numeric(difftime(end_local, start_local,
+                                          units = "hours"))
+  )
+```
+
+### Step 8 — Convert Sleep Stages from Milliseconds to Hours
+
+```{r convert_sleep_stages}
+# WHOOP stores all sleep stage durations in milliseconds
+# We convert to hours by dividing by 3,600,000
+# (1 hour = 60 min x 60 sec x 1000 ms = 3,600,000 ms)
+#
+# Sleep stages explained:
+# Light sleep → easiest stage to wake from
+# Deep sleep  → most physically restorative (slow wave sleep)
+# REM sleep   → important for memory consolidation and mood
+# Awake       → time in bed but not sleeping
+sleep_data_cleaned <- sleep_data_cleaned %>%
+  mutate(
+    # total time spent in bed (includes awake time)
+    total_in_bed_hours      = score.stage_summary.total_in_bed_time_milli          / 3600000,
+
+    # time spent awake while in bed (restless periods)
+    total_awake_hours       = score.stage_summary.total_awake_time_milli           / 3600000,
+
+    # light sleep stage duration
+    total_light_sleep_hours = score.stage_summary.total_light_sleep_time_milli     / 3600000,
+
+    # deep (slow wave) sleep stage duration — most restorative
+    total_deep_sleep_hours  = score.stage_summary.total_slow_wave_sleep_time_milli / 3600000,
+
+    # REM sleep stage duration
+    total_rem_sleep_hours   = score.stage_summary.total_rem_sleep_time_milli       / 3600000,
+
+    # total actual sleep = deep + REM + light combined
+    # note: this is NOT the same as total_in_bed_hours!
+    # total_in_bed = total_sleep + total_awake
+    total_sleep_hours       = total_deep_sleep_hours +
+                              total_rem_sleep_hours  +
+                              total_light_sleep_hours
+  )
+```
+
+### Step 9 — Calculate Sleep Deficit
+
+```{r calc_sleep_deficit}
+# Sleep deficit measures how much sleep was needed vs how much was gotten
+# Negative deficit = slept LESS than needed (most common)
+# Positive deficit = slept MORE than needed (less common)
+# baseline_milli = WHOOP personalised sleep recommendation in milliseconds
+sleep_data_cleaned <- sleep_data_cleaned %>%
+  mutate(
+    # convert baseline recommendation from milliseconds to hours
+    baseline_hours = score.sleep_needed.baseline_milli / 3600000,
+
+    # deficit = actual sleep minus recommended sleep
+    # negative value means sleep debt is building up
+    sleep_deficit  = total_sleep_hours - baseline_hours
+  )
+```
+
+### Step 10 — Select Relevant Columns
+
+```{r select_only_relevant_columns}
+# Keep only the columns that are useful for downstream analysis
+# Drop raw millisecond columns — we now have hours versions
+# Drop original UTC timestamps — we now have local time versions
+sleep_data_cleaned <- sleep_data_cleaned %>%
+  select(
+    cycle_id,                               # key for joining with other datasets
+    start_local,                            # local time when sleep started
+    end_local,                              # local time when sleep ended
+    sleep_duration,                         # total hours slept
+    sleep_deficit,                          # hours under/over recommended sleep
+    baseline_hours,                         # WHOOP recommended sleep hours
+    total_in_bed_hours,                     # total time in bed
+    total_awake_hours,                      # time awake while in bed
+    total_light_sleep_hours,                # light sleep stage hours
+    total_deep_sleep_hours,                 # deep sleep stage hours
+    total_rem_sleep_hours,                  # REM sleep stage hours
+    total_sleep_hours,                      # total actual sleep hours
+    score.respiratory_rate,                 # average breaths per minute
+    score.sleep_performance_percentage,     # actual vs needed sleep %
+    score.sleep_consistency_percentage,     # regularity of sleep schedule %
+    score.sleep_efficiency_percentage,      # % of bed time actually sleeping
+    score.stage_summary.sleep_cycle_count,  # number of complete sleep cycles
+    score.stage_summary.disturbance_count   # number of sleep disturbances
+  )
+```
+
+## Save Cleaned Data
+
+```{r store_clean_data}
+# Save cleaned sleep data as RDS format
+# RDS is preferred over CSV because:
+# → preserves column data types perfectly (dates stay as dates)
+# → faster to load in subsequent analyses
+# → smaller file size than CSV
+# This file is loaded by notebook.Rmd for the master dataset
+write_rds(sleep_data_cleaned,
+          file = here("data", "cleaned_sleep_data.rds"))
+
+cat("Cleaned sleep data saved successfully!\n")
+cat("Rows:    ", nrow(sleep_data_cleaned), "\n")
+cat("Columns: ", ncol(sleep_data_cleaned), "\n")
+```

@@ -17,12 +17,15 @@ source("util/helpers.R")
 ```
 
 ```{r data load}
-whoop_master <- read.csv(here("data", "whoop_master.csv"))
+# Load master dataset from RDS — preserves column types perfectly
+whoop_master <- readRDS(here("data", "whoop_master.rds"))
 
-# make sure date is proper date format
+# Extract date from start_local and filter out any rows with no date
+# as.Date() extracts just the date part from the datetime column
+# filter(!is.na(date)) removes 10 rows with no sleep recorded
 whoop_master <- whoop_master %>%
-  mutate(date = as.Date(date)) %>%
-  filter(!is.na(date)) 
+  mutate(date = as.Date(start_local)) %>%
+  filter(!is.na(date))
 
 # define WHOOP zone colours used consistently across all plots
 zone_colours <- c("red" = "#E8453C", "yellow" = "#F5A623", "green" = "#4CAF50")
@@ -103,13 +106,7 @@ whoop_master %>%
 
 
 
-```{r}
-whoop_master |> 
-  correlate() |> 
-  autoplot() +
-  theme_minimal() + # Sie können normale ggplot-Befehle anhängen
-  labs(title = "Korrelations-Heatmap mit corrr")
-```
+
 -> Gleiches hier 
 
 ```{r}

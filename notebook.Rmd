@@ -42,10 +42,10 @@ summary(whoop_recovery)
 
 ```{r data-format}
 # -------- Whoop Sleep --------
-# clean_sleep() handles everything:
-# sanitizing lists, parsing dates, removing naps,
-# handling duplicates and extracting metrics
-sleep_data <- clean_sleep(whoop_sleep)
+
+# Load cleaned sleep data
+# Tidy_Sleep_Data.Rmd must be run first to generate this file
+sleep_data <- readRDS(here("data", "cleaned_sleep_data.rds"))
 
 # -------- Whoop Recovery --------
 # load Robin's properly cleaned recovery data
@@ -160,17 +160,18 @@ whoop_master <- whoop_cycle %>%
   left_join(
     # only keep useful sleep columns
     sleep_data %>%
-      select(cycle_id, date, start_date, end_date,
-             sleep_duration, sleep_deficit,
-             total_in_bed_hours, total_awake_hours,
-             total_light_sleep_hours, total_deep_sleep_hours,
-             total_rem_sleep_hours, total_sleep_hours,
-             score.respiratory_rate,
-             score.sleep_performance_percentage,
-             score.sleep_consistency_percentage,
-             score.sleep_efficiency_percentage,
-             score.stage_summary.sleep_cycle_count,
-             score.stage_summary.disturbance_count),
+  select(cycle_id, start_local, end_local,
+         sleep_duration, sleep_deficit,
+         baseline_hours,
+         total_in_bed_hours, total_awake_hours,
+         total_light_sleep_hours, total_deep_sleep_hours,
+         total_rem_sleep_hours, total_sleep_hours,
+         score.respiratory_rate,
+         score.sleep_performance_percentage,
+         score.sleep_consistency_percentage,
+         score.sleep_efficiency_percentage,
+         score.stage_summary.sleep_cycle_count,
+         score.stage_summary.disturbance_count),
     by = c("id" = "cycle_id")
   ) %>%
   # Step 2 — join with recovery
@@ -222,6 +223,8 @@ whoop_master <- whoop_master %>%
              total_workout_strain, workout_types),
     by = c("id" = "id.x")
   )
+# Save master dataset as RDS — preserves column types perfectly
+write_rds(whoop_master, here("data", "whoop_master.rds"))
 ```
 
 # Data visualization
