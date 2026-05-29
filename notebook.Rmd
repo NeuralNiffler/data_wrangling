@@ -13,34 +13,8 @@ library(naniar)
 source("util/helpers.R")
 ```
 
-```{r data-retrieval_read_only}
-#| eval: false
-sleep_data_batch <- helpers::get_whoop_records(endpoint = "sleep", max_records = 100)
-workout_data_batch <- helpers::get_whoop_records(endpoint = "workout", max_records = 100)
-recovery_data_batch <- helpers::get_whoop_records(endpoint = "recovery", max_records = 100)
-cycle_data_batch <- helpers::get_whoop_records(endpoint = "cycle", max_records = 100)
 
-jsonlite::write_json(sleep_data_batch, here("data", "whoop_sleep_data_batch.json"), pretty = TRUE)
-jsonlite::write_json(workout_data_batch, here("data","whoop_workout_data_batch.json"), pretty = TRUE)
-jsonlite::write_json(recovery_data_batch, here("data","whoop_recovery_data_batch.json"), pretty = TRUE)
-jsonlite::write_json(cycle_data_batch, here("data","whoop_cycle_data_batch.json"), pretty = TRUE)
-```
-
-```{r data-load}
-whoop_sleep    <- jsonlite::read_json(here("data", "whoop_sleep_data_batch.json"),    simplifyVector = TRUE, flatten = TRUE)
-whoop_workout  <- jsonlite::read_json(here("data", "whoop_workout_data_batch.json"),  simplifyVector = TRUE, flatten = TRUE)
-whoop_recovery <- jsonlite::read_json(here("data", "whoop_recovery_data_batch.json"), simplifyVector = TRUE, flatten = TRUE)
-whoop_cycle    <- jsonlite::read_json(here("data", "whoop_cycle_data_batch.json"),    simplifyVector = TRUE, flatten = TRUE)
-```
-
-# Data cleaning
-
-```{r data-format analysis}
-summary(whoop_sleep)
-summary(whoop_recovery)
-```
-
-```{r data-format}
+```{r data-read}
 # -------- Whoop Sleep --------
 
 # Load cleaned sleep data
@@ -54,182 +28,27 @@ recovery_data <- readRDS(here("data", "cleaned_recovery_data.rds"))
 
 # -------- Whoop Cycle --------
 # sanitize structure first so columns are usable
-whoop_cycle <- sanitize_data_structure(whoop_cycle)
+cycle_data <- readRDS(here("data", "cleaned_cycle_data.rds"))
 
-# -------- Whoop Workout --------
-# sanitize structure first so columns are usable
-whoop_workout <- sanitize_data_structure(whoop_workout)
 ```
 
-## Handling duplicates Data Errors and outliers, missing values
-
-```{r missing-values analysis}
-#Ok
-naniar::vis_miss(whoop_sleep)
-naniar::vis_miss(whoop_recovery)
-naniar::vis_miss(whoop_cycle)
-
-#NOK
-naniar::vis_miss(whoop_workout)
-```
-
-```{r data-cleaning analysis}
-
-# -------- Whoop Sleep --------
-# Whoop Sleep -> Nothing to do
-naniar::miss_var_summary(whoop_sleep)
-
-# -------- Whoop Recovery --------
-
-# Already cleaned by Tidy_Recovery_Data.Rmd
-# including missing value imputation and outlier removal
-naniar::miss_var_summary(recovery_data)
-
-# -------- Whoop Workout --------
-naniar::miss_var_summary(whoop_workout)
-
-## Values without strain make no sense -> exclude
-whoop_workout <- whoop_workout %>% filter(!is.na(score.strain))
-
-naniar::miss_var_summary(whoop_workout)
-
-# -------- Whoop Cycle --------
-# One Entry without end date (on day of export) -> exclude
-naniar::miss_var_summary(whoop_cycle)
-
-whoop_cycle <- whoop_cycle %>% filter(!is.na(end))
-```
-
-```{r data_cleaning_duplicates}
-# Recovery
-length(unique(whoop_recovery$cycle_id))
-length(unique(whoop_recovery$sleep_id))
-nrow(whoop_recovery)
-
-# Sleep
-length(unique(whoop_sleep$cycle_id))
-nrow(whoop_sleep)
-
-dublicated_sleeps <- whoop_sleep %>% filter(duplicated(cycle_id))
-whoop_naps        <- whoop_sleep %>% filter(nap == TRUE)
-whoop_sleep       <- whoop_sleep %>% filter(nap == FALSE)
-
-# Workout
-length(unique(whoop_workout$start))
-nrow(whoop_workout)
-
-# Whoop Cycle
-length(unique(whoop_cycle$start))
-nrow(whoop_cycle)
-```
-
-# Data transformation
-## data combination (Time Offset), long-to-wide and vice versa, data reshaping, feature engineering
-
-```{r data-transformation}
-
-# ── Sleep transformations ──────────────────────────────────
-# Already handled by clean_sleep() in helpers.R
-# No sleep code needed here!
-
-
-# ── Recovery transformations ───────────────────────────────
-# Already handled by Tidy_Recovery_Data.Rmd
-# recovery_zone already added by Robin's cleaning pipeline
-# No recovery code needed here!
-
-# ── Workout transformations ────────────────────────────────
-# Rename columns first to avoid clashes when joining with cycle later
-# Then convert kilojoules to calories using Robin's helper function
-whoop_workout <- whoop_workout %>%
-  rename(
-    workout_strain    = score.strain,
-    workout_avg_hr    = score.average_heart_rate,
-    workout_max_hr    = score.max_heart_rate,
-    workout_kilojoule = score.kilojoule
-  ) %>%
-  mutate(
-    calories = kj_to_calorie(workout_kilojoule)
-  )
-```
 
 # Data joining
 ```{r data-joining}
-# Step 1 — join cycle with sleep (one row per day)
-whoop_master <- whoop_cycle %>%
-  left_join(
-    # only keep useful sleep columns
-    sleep_data %>%
-  select(cycle_id, start_local, end_local,
-         sleep_duration, sleep_deficit,
-         baseline_hours,
-         total_in_bed_hours, total_awake_hours,
-         total_light_sleep_hours, total_deep_sleep_hours,
-         total_rem_sleep_hours, total_sleep_hours,
-         score.respiratory_rate,
-         score.sleep_performance_percentage,
-         score.sleep_consistency_percentage,
-         score.sleep_efficiency_percentage,
-         score.stage_summary.sleep_cycle_count,
-         score.stage_summary.disturbance_count),
-    by = c("id" = "cycle_id")
+whoop_master <- cycle_data %>%
+  inner_join( sleep_data, by = c("id" = "cycle_id")
   ) %>%
-  # Step 2 — join with recovery
-  left_join(
-    # only keep useful recovery columns
-    # note: Robin renamed hrv column to recovery_heart_rate_variability
-    recovery_data %>%
-      select(cycle_id, recovery_zone,
-             score.recovery_score,
-             score.resting_heart_rate,
-             recovery_heart_rate_variability,
-             score.spo2_percentage,
-             score.skin_temp_celsius),
-    by = c("id" = "cycle_id")
+  inner_join(recovery_data, by = c("id" = "cycle_id")
   )
 ```
 
-```{r workout-joining-1}
-# Summarise workouts per cycle day
-# workouts need time-based join since multiple can happen per day
-workouts_per_cycle <- whoop_cycle %>%
-  mutate(
-    cycle_start = lubridate::ymd_hms(start),
-    cycle_end   = lubridate::ymd_hms(end)
-  ) %>%
-  left_join(
-    whoop_workout %>%
-      mutate(
-        workout_start = lubridate::ymd_hms(start),
-        workout_end   = lubridate::ymd_hms(end)
-      ),
-    join_by(cycle_start <= workout_start, cycle_end >= workout_end)
-  ) %>%
-  group_by(id.x, datum = as.Date(cycle_end)) %>%
-  summarise(
-    n_workouts           = sum(!is.na(id.y)),
-    total_workout_strain = sum(workout_strain, na.rm = TRUE),
-    workout_types        = paste(unique(na.omit(sport_name)), collapse = ", "),
-    .groups = "drop"
-  )
+```{r}
+whoop_cycles_no_sleep <- cycle_data %>% 
+  left_join(sleep_data, by = c("id" = "cycle_id")) %>%
+  filter(is.na(sleep_duration))
 ```
 
-```{r workout-joining-2}
-# Step 3 — join with workout summary
-whoop_master <- whoop_master %>%
-  left_join(
-    workouts_per_cycle %>%
-      select(id.x, n_workouts,
-             total_workout_strain, workout_types),
-    by = c("id" = "id.x")
-  )
-# Save master dataset as RDS — preserves column types perfectly
-write_rds(whoop_master, here("data", "whoop_master.rds"))
-```
-
-# Data visualization
-```{r data-visualization}
-# visualize data
 
 
-```
+
+

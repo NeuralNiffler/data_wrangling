@@ -217,8 +217,6 @@ sleep_data_cleaned <- sleep_data_cleaned %>%
 sleep_data_cleaned <- sleep_data_cleaned %>%
   select(
     cycle_id,                               # key for joining with other datasets
-    start_local,                            # local time when sleep started
-    end_local,                              # local time when sleep ended
     sleep_duration,                         # total hours slept
     sleep_deficit,                          # hours under/over recommended sleep
     baseline_hours,                         # WHOOP recommended sleep hours
