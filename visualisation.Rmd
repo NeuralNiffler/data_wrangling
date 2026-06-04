@@ -4,6 +4,8 @@ author: "Monish Pahwa"
 output: html_document
 ---
 
+# Was beeinflusst meine Regenerierung?:
+
 ```{r setup}
 #| echo: false
 library(here)
@@ -11,9 +13,13 @@ library(tidyverse)
 library(ggplot2)
 library(ggpubr)
 library(patchwork)
-library(corrr)
+library(correlation)
+library(see) 
+library(ggraph)
 
 source("util/helpers.R")
+
+options(scipen = 999)
 ```
 
 ```{r data load}
@@ -25,13 +31,27 @@ whoop_master <- readRDS(here("data", "whoop_master.rds"))
 zone_colours <- c("red" = "#E8453C", "yellow" = "#F5A623", "green" = "#4CAF50")
 ```
 
+## Übersicht über signifikante Werte (Pearson Korrelation)
+```{r}
+significant_data <- whoop_master %>%
+  correlation() %>%
+  filter(Parameter1 == "score.recovery_score" | Parameter2 == "score.recovery_score") %>%
+  filter(p < 0.05) %>%
+  arrange(desc(r))
 
+significant_data
+```
+-> Schaut sich die Korrelationen an sämtlicher Variablen auf den Recovery Score
+
+## Allgemein: Graphische Aufbereitung:
+```{r}
+plot(significant_data) +
+  scale_edge_color_continuous(low = "#000004FF", high = "#FCFDBFFF") +
+  geom_node_label(aes(label = name), fill = "white", color = "black")
+```
+
+## Detail: Regenerierung in Abhängigkeit des Gesamtschlafes des Vortages
 ```{r plot-recovery-vs-sleep}
-# ── Plot 2: Recovery Score vs Sleep Duration ───────────────
-# Scatter plot — each dot = one day
-# X axis = how many hours slept that night
-# Y axis = recovery score the next morning
-# Question: does more sleep = better recovery?
 
 ggplot(whoop_master, aes(x = total_sleep_hours, y = score.recovery_score)) +
 
@@ -69,8 +89,8 @@ ggplot(whoop_master, aes(x = total_sleep_hours, y = score.recovery_score)) +
 -> However the correlation coefficient only shows a moderate correlation (R = 0.45)
 -> Sleep is not the only factor influencing the recovery for example with a sleep of 7.5 hours the data points Recovery Score Ranges from 100 - 33.
 
+## Detail: Regenerierung in Abhängigkeit des Tiefschlafes des Vortages
 ```{r}
-# Korrelation Schlaf Tages Strain
 ggplot(whoop_master, aes(x = total_deep_sleep_hours, y = score.recovery_score)) +
   geom_point(aes(colour = recovery_zone), size = 3, alpha = 0.7) +
   
@@ -90,35 +110,6 @@ ggplot(whoop_master, aes(x = total_deep_sleep_hours, y = score.recovery_score)) 
 ```
 -> Beachtet man nur den gemessenen Tiefschlaf und seine Korrelation zur Recovery Score sieht man dass die Trendlinie deutlich flacher verläuft (-> Korrelation ist geringer)
 
-```{r}
-whoop_master %>%
-  correlate()  %>%
-  focus(score.recovery_score)  %>%
-  arrange(desc(score.recovery_score))
-```
--> Schaut sich die Korrelationen an sämtlicher Variablen auf den Recovery Score
-
-
-
-
--> Gleiches hier 
-
-```{r}
-whoop_master |> 
-  select(where(is.numeric)) |> 
-  select(where(~ sd(.x, na.rm = TRUE) > 0)) |> # Filtert Spalten ohne Varianz heraus
-  correlate() |> 
-  network_plot(min_cor = 0.2)
-```
-```{r}
-whoop_master |> 
-  select(where(is.numeric)) |> 
-  select(where(~ sd(.x, na.rm = TRUE) > 0)) |> # Filtert Spalten ohne Varianz heraus
-  correlate() |> 
-  autoplot() +
-  theme_minimal() + # Sie können normale ggplot-Befehle anhängen
-  labs(title = "Korrelations-Heatmap mit corrr")
-```
 
 
 

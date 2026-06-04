@@ -48,6 +48,9 @@ whoop_cycles_no_sleep <- cycle_data %>%
   filter(is.na(sleep_duration))
 ```
 
+```{r}
+write_rds(whoop_master, here("data", "whoop_master.rds"))
+```
 
 
 
