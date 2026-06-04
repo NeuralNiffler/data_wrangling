@@ -11,7 +11,7 @@ library(tidyverse)
 library(naniar)
 
 
-source("util/helpers.R")
+source(here("util", "helpers.R"))
 ```
 
 ## Daten laden
@@ -25,16 +25,16 @@ Da die Daten noch verschachtelt sind (leere Listen etc.), müssen diese noch noc
  recovery_data <- sanitize_data_structure(recovery_data)
 ```
 
-```{r}
+```{r missing-values-analysis}
 naniar::miss_var_summary(recovery_data)
 ```
 Analyse:
-```{r}
+```{r missing-values-analysis_detail_1}
 no_skin_temp <- recovery_data %>% filter(is.na(score.skin_temp_celsius))
 ```
 -> Datensatz sieht sonst gut aus -> NA imputieren mit Mittelwert
 
-```{r}
+```{r missing-values-analysis_detail_2}
 recovery_data <- recovery_data %>%
   mutate(score.skin_temp_celsius = 
            replace_na(score.skin_temp_celsius,  median(score.skin_temp_celsius, na.rm = TRUE))) 
@@ -46,12 +46,12 @@ recovery_data <- recovery_data %>% distinct(cycle_id, .keep_all = TRUE)
 ```
 
 Outlier Detection
-```{r}
+```{r outlier_detection}
  result <- outlier_detection(recovery_data)
 ```
 
 Analyse:
-```{r}
+```{r outlier_detection_analysis}
 outlier_rows_resting_hear_rate <- recovery_data %>% filter(score.resting_heart_rate %in% c(88) ) #da hate ich einen recovery score von 4 scheint ein aussreisser zu sein -> löschen
 
 outlier_rows_spo2 <- recovery_data %>% filter(score.spo2_percentage < 92.2000) # der ist nur sehr wenig weg vom nächsten -> so lassen
@@ -60,25 +60,25 @@ outlier_rows_skin_temp <- recovery_data %>% filter(score.skin_temp_celsius <= 32
 ```
 
 Umsetzung basierend auf Analyse:
-```{r}
+```{r outlier_detection_execute}
 recovery_data <- recovery_data %>% filter(!sleep_id == outlier_rows_resting_hear_rate$sleep_id)
 ```
 
 Datenbereinigung abgeschlossen:
-```{r}
+```{r cleaned_data}
 recovery_data_cleaned <- recovery_data
 ```
 
 
 ## Feature Engineering
 Variable umbennenen -> sprechender
-```{r}
+```{r feature_eng_1}
 recovery_data_cleaned <- recovery_data_cleaned %>%
   rename(recovery_heart_rate_variability = score.hrv_rmssd_milli)
 ```
 
 recovery_zone (Ampel) je nach recovery_score:
-```{r feature_engineering}
+```{r feature_eng_2}
 
 recovery_data_cleaned <- recovery_data_cleaned %>%
   mutate(

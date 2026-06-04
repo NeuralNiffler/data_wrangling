@@ -12,7 +12,7 @@ library(naniar)
 library(purrr)
 
 
-source("util/helpers.R")
+source(here("util", "helpers.R"))
 ```
 
 ## Daten laden
@@ -27,7 +27,7 @@ Da die Daten noch verschachtelt sind (leere Listen etc.), müssen diese noch noc
 ```
 
 Analyse n/a:
-```{r}
+```{r missing-values-analysis}
 naniar::miss_var_summary(cycle_data)
 ```
 -> Macht keinen Sinn den drinzubehalten und Wert kann nicht imputiert werden -> Datensatz rausfiltern
@@ -42,12 +42,12 @@ cycle_data <- cycle_data %>% distinct(start, .keep_all = TRUE)
 ```
 
 Outlier Detection
-```{r}
+```{r outlier_detection-analysis}
  result <- outlier_detection(cycle_data)
 ```
 
 
-```{r}
+```{r outlier-detection}
 outlier_rows_average_heart_rate <- cycle_data %>% filter(score.average_heart_rate %in% c(91,63) ) #war ein high strength als auch ein low strength tag
 
 outlier_rows_kilojoule <- cycle_data %>% filter(score.kilojoule > 11000) #waren 2 high strenght tage
@@ -55,7 +55,7 @@ outlier_rows_kilojoule <- cycle_data %>% filter(score.kilojoule > 11000) #waren 
 -> Werte sind plausibel
 
 Datenbereinigung abgeschlossen:
-```{r}
+```{r cleaned_data}
 cycle_data_cleaned <- cycle_data
 ```
 
@@ -63,7 +63,7 @@ cycle_data_cleaned <- cycle_data
 ## Feature Engineering
 
 Lokale Zeit ermitteln für Cycle Periode:
-```{r calc_local_time}
+```{r feature_eng_1}
 cycle_data_cleaned <- cycle_data_cleaned %>%
   mutate(
     start_local = apply_timezone_offset(start, timezone_offset),
@@ -72,7 +72,7 @@ cycle_data_cleaned <- cycle_data_cleaned %>%
 ```
 
 Kilojoules in Kilokalorien umrechnen:
-```{r }
+```{r feature_eng_2}
 cycle_data_cleaned <- cycle_data_cleaned %>%
   mutate(
     score.calories = kj_to_calorie(score.kilojoule)

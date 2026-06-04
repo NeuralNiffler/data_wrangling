@@ -20,7 +20,7 @@ library(purrr)
 # Load custom helper functions written for this project
 # Includes: load_data(), sanitize_data_structure(),
 #           outlier_detection(), apply_timezone_offset()
-source("util/helpers.R")
+source(here("util", "helpers.R"))
 ```
 
 ## Load Data

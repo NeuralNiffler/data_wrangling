@@ -35,7 +35,7 @@ zone_colours <- c("red" = "#E8453C", "yellow" = "#F5A623", "green" = "#4CAF50")
 ```
 
 ## Übersicht über signifikante Werte (Pearson Korrelation)
-```{r}
+```{r corelation_matrix}
 significant_data <- whoop_master %>%
   correlation() %>%
   filter(Parameter1 == "score.recovery_score" | Parameter2 == "score.recovery_score") %>%
@@ -47,7 +47,7 @@ significant_data
 -> Schaut sich die Korrelationen an sämtlicher Variablen auf den Recovery Score
 
 ## Allgemein: Graphische Aufbereitung:
-```{r}
+```{r node_label}
 plot(significant_data) +
   scale_edge_color_continuous(low = "#000004FF", high = "#FCFDBFFF") +
   geom_node_label(aes(label = name), fill = "white", color = "black")
@@ -93,7 +93,7 @@ ggplot(whoop_master, aes(x = total_sleep_hours, y = score.recovery_score)) +
 -> Sleep is not the only factor influencing the recovery for example with a sleep of 7.5 hours the data points Recovery Score Ranges from 100 - 33.
 
 ## Detail: Regenerierung in Abhängigkeit des Tiefschlafes des Vortages
-```{r}
+```{r plot-recovery-vs-deepsleep}
 ggplot(whoop_master, aes(x = total_deep_sleep_hours, y = score.recovery_score)) +
   geom_point(aes(colour = recovery_zone), size = 3, alpha = 0.7) +
   
