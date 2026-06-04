@@ -9,7 +9,7 @@ library(dplyr)
 load_data <- function(datatype) {
    filename <- .get_data_filename(datatype)
    
-    whoop_data <- jsonlite::read_json(here("data", filename), simplifyVector = TRUE, flatten = TRUE)
+    whoop_data <- jsonlite::read_json(here("data", "input", filename), simplifyVector = TRUE, flatten = TRUE)
    
     return(whoop_data)
 }
