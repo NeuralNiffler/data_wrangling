@@ -1,6 +1,6 @@
 ---
 title: "WHOOP Visualisations"
-author: "Monish Pahwa"
+author: "Monish Pahwa & Robin Schmid"
 output: html_document
 ---
 
@@ -18,15 +18,18 @@ library(see)
 library(ggraph)
 
 source("util/helpers.R")
+source("run_pipelines.R")
 
 options(scipen = 999)
 ```
 
-```{r data load}
-
+```{r run-pipeline}
+run_pipeline()
 whoop_master <- readRDS(here("data", "whoop_master.rds"))
+```
 
 
+```{r prepare}
 # define WHOOP zone colours used consistently across all plots
 zone_colours <- c("red" = "#E8453C", "yellow" = "#F5A623", "green" = "#4CAF50")
 ```
