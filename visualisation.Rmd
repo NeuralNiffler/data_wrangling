@@ -18,7 +18,7 @@ library(see)
 library(ggraph)
 
 source("util/helpers.R")
-source("run_pipelines.R")
+source("util/run_pipelines.R")
 
 options(scipen = 999)
 ```
