@@ -1,84 +1,96 @@
 ---
-title: "WHOOP Visualisations"
+title: "WHOOP: Was beeinflusst meine Regeneration?"
 author: "Monish Pahwa & Robin Schmid"
-output: html_document
+date: "`r format(Sys.Date(), '%d.%m.%Y')`"
+output:
+  html_document:
+    theme: flatly
+    highlight: tango
+    code_folding: hide
+    fig_width: 8
+    fig_height: 5
 ---
 
-# Was beeinflusst meine Regenerierung?:
+In dieser Analyse schauen wir uns anhand von rund 90 Tagen WHOOP-Daten an,
+welche Schlaf- und Vitalwerte den **Recovery Score** beeinflussen — zuerst
+über Korrelationen, danach im Detail für Gesamt- und Tiefschlaf.
 
-```{r setup}
-#| echo: false
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(message = FALSE, warning = FALSE)
+
 library(here)
 library(tidyverse)
 library(ggplot2)
 library(ggpubr)
 library(patchwork)
 library(correlation)
-library(see) 
+library(see)
 library(ggraph)
 
-source("util/helpers.R")
-source("util/run_pipelines.R")
+source(here("util", "helpers.R"))
+source(here("util", "run_pipelines.R"))
 
 options(scipen = 999)
 ```
 
-```{r run-pipeline}
+```{r run-pipeline, include=FALSE}
 run_pipeline()
 whoop_master <- readRDS(here("data", "whoop_master.rds"))
 ```
 
-
 ```{r prepare}
-# define WHOOP zone colours used consistently across all plots
+# WHOOP-Zonenfarben - durchgehend in allen Plots verwendet
 zone_colours <- c("red" = "#E8453C", "yellow" = "#F5A623", "green" = "#4CAF50")
 ```
 
 ## Übersicht über signifikante Werte (Pearson Korrelation)
+
 ```{r corelation_matrix}
 significant_data <- whoop_master %>%
-  correlation() %>%
+  correlation(p_adjust = "none") %>%
   filter(Parameter1 == "score.recovery_score" | Parameter2 == "score.recovery_score") %>%
   filter(p < 0.05) %>%
   arrange(desc(r))
 
 significant_data
 ```
--> Schaut sich die Korrelationen an sämtlicher Variablen auf den Recovery Score
 
-## Allgemein: Graphische Aufbereitung:
+Am stärksten korrelieren **HRV** und **Ruhepuls** mit der Recovery — beides
+sind allerdings eher *Begleiterscheinungen* der Erholung als aktiv steuerbare
+Hebel. Unter den beeinflussbaren Größen führen **Gesamtschlaf** und
+**Leichtschlaf** das Feld an.
+
+## Korrelationsnetzwerk
+
 ```{r node_label}
 plot(significant_data) +
   scale_edge_color_continuous(low = "#000004FF", high = "#FCFDBFFF") +
   geom_node_label(aes(label = name), fill = "white", color = "black")
 ```
 
-## Detail: Regenerierung in Abhängigkeit des Gesamtschlafes des Vortages
-```{r plot-recovery-vs-sleep}
+Helle Kanten stehen für positive, dunkle für negative Zusammenhänge mit dem
+Recovery Score im Zentrum.
 
+## Detail: Regeneration in Abhängigkeit des Gesamtschlafes des Vortages
+
+```{r plot-recovery-vs-sleep}
 ggplot(whoop_master, aes(x = total_sleep_hours, y = score.recovery_score)) +
 
-  # each dot = one day, coloured by recovery zone
-  # alpha = 0.7 makes dots slightly transparent
-  # so overlapping dots are still visible
   geom_point(aes(colour = recovery_zone), size = 3, alpha = 0.7) +
 
-  # linear regression trend line (method = "lm")
-  # shows the overall direction of the relationship
-  # se = TRUE shows grey confidence interval band around the line
+  # lineare Trendlinie mit grauem Konfidenzband
   geom_smooth(method = "lm", colour = "grey30",
               se = TRUE, fill = "grey80", linewidth = 1) +
-    
+
   stat_cor(method = "pearson") +
 
-  # use our custom WHOOP zone colours
-  scale_colour_manual(values = zone_colours, name = "Recovery Zone") +
+  scale_colour_manual(values = zone_colours, name = "Recovery-Zone") +
 
   labs(
-    title    = "Does More Sleep Lead to Better Recovery?",
-    subtitle = "Each dot = one day | Line = trend | Grey band = confidence interval",
-    x        = "Total Sleep Hours",
-    y        = "Recovery Score (0-100)"
+    title    = "Mehr Schlaf, bessere Recovery?",
+    subtitle = "Jeder Punkt = ein Tag · Linie = Trend · graues Band = Konfidenzintervall",
+    x        = "Gesamtschlaf (Stunden)",
+    y        = "Recovery Score (0–100)"
   ) +
   theme_minimal() +
   theme(
@@ -88,34 +100,74 @@ ggplot(whoop_master, aes(x = total_sleep_hours, y = score.recovery_score)) +
     legend.position  = "bottom"
   )
 ```
--> There is obviously a positive trend between more sleep and higher recovery score.
--> However the correlation coefficient only shows a moderate correlation (R = 0.45)
--> Sleep is not the only factor influencing the recovery for example with a sleep of 7.5 hours the data points Recovery Score Ranges from 100 - 33.
 
-## Detail: Regenerierung in Abhängigkeit des Tiefschlafes des Vortages
+* **Klarer positiver Trend:** Mehr Schlaf geht mit höherer Recovery einher.
+* **Aber nur moderat** (R ≈ 0.47): Schlaf ist nicht der einzige Faktor.
+* **Große Streuung:** Bei 7,5 Stunden Schlaf reichen die Recovery-Werte von 33 bis 100 — andere Einflüsse (Stress, Training, Ernährung) wirken mit.
+
+## Detail: Regeneration in Abhängigkeit des Tiefschlafes des Vortages
+
 ```{r plot-recovery-vs-deepsleep}
 ggplot(whoop_master, aes(x = total_deep_sleep_hours, y = score.recovery_score)) +
   geom_point(aes(colour = recovery_zone), size = 3, alpha = 0.7) +
-  
-   geom_smooth(method = "lm", colour = "grey30",
+
+  geom_smooth(method = "lm", colour = "grey30",
               se = TRUE, fill = "grey80", linewidth = 1) +
-    
+
   stat_cor(method = "pearson") +
 
-  # use our custom WHOOP zone colours
-  scale_colour_manual(values = zone_colours, name = "Recovery Zone") +
+  scale_colour_manual(values = zone_colours, name = "Recovery-Zone") +
   theme_minimal() +
   labs(
     title = "Korrelation: Tiefschlaf auf Recovery Score",
-    x = "Tiefschlaf in Stunden",
-    y = "Recovery Score"
+    x     = "Tiefschlaf (Stunden)",
+    y     = "Recovery Score"
   )
 ```
--> Beachtet man nur den gemessenen Tiefschlaf und seine Korrelation zur Recovery Score sieht man dass die Trendlinie deutlich flacher verläuft (-> Korrelation ist geringer)
+
+Isoliert betrachtet ist der Tiefschlaf ein deutlich **schwächerer Prädiktor**:
+Die Trendlinie verläuft flacher und die Korrelation ist gering (R ≈ 0.19, nicht
+signifikant). Offenbar wiegt die *Menge* an Schlaf hier schwerer als die
+einzelne Schlafphase.
+
+## Abschluss: Schlafeffizienz und Recovery Score
+
+```{r plot-sleep-efficiency}
+ggplot(whoop_master, aes(x = score.sleep_efficiency_percentage, y = score.recovery_score)) +
+  geom_point(aes(colour = recovery_zone), size = 3, alpha = 0.7) +
+
+  geom_smooth(method = "lm", colour = "grey30",
+              se = TRUE, fill = "grey80", linewidth = 1) +
+
+  stat_cor(method = "pearson") +
+
+  scale_colour_manual(values = zone_colours, name = "Recovery-Zone") +
+  theme_minimal() +
+  labs(
+    title = "Schlafeffizienz und Recovery Score",
+    x     = "Schlafeffizienz (%)",
+    y     = "Recovery Score"
+  )
+```
+
+Den Abschluss bildet die **Schlafeffizienz** — der Anteil der Zeit im Bett, der
+tatsächlich geschlafen wurde (WHOOPs `score.sleep_efficiency_percentage`):
+
+* **Schwach, aber signifikant positiv** (R ≈ 0.23, p = 0.03): Effizienter Schlaf geht mit etwas besserer Recovery einher.
+* **Kleiner Hebel:** Der Zusammenhang ist deutlich schwächer als bei der reinen Schlafmenge (R ≈ 0.47) — gut zu schlafen hilft, ersetzt aber nicht *genug* Schlaf.
 
 
+# Fazit
 
+Über alle Analysen hinweg zeichnet sich ein klares Bild ab — wobei es sich
+durchgehend um **Korrelationen** handelt, nicht um belegte Ursache-Wirkung:
 
+* **Stärkste Signale, aber keine Stellschrauben:** HRV und Ruhepuls korrelieren am deutlichsten mit der Recovery. Beide sind jedoch physiologische *Begleiterscheinungen* der Erholung und lassen sich nicht direkt beeinflussen.
+* **Schlafmenge ist der wichtigste steuerbare Hebel:** Der Gesamtschlaf zeigt den stärksten beeinflussbaren Zusammenhang (R ≈ 0.47) — mehr Schlaf geht spürbar mit besserer Recovery einher.
+* **Phase schlägt nicht Menge:** Der isolierte Tiefschlaf trägt überraschend wenig bei (R ≈ 0.19, nicht signifikant). Entscheidend ist offenbar, *wie viel* geschlafen wird, weniger die einzelne Schlafphase.
+* **Effizienz als Feinschliff:** Eine höhere Schlafeffizienz hilft zusätzlich (R ≈ 0.23), bleibt aber ein kleiner Hebel gegenüber der schieren Schlafmenge.
 
-
-
+**Kurz gesagt:** Genug schlafen ist der größte Hebel, effizient schlafen der
+Feinschliff. Die einzelne Schlafphase und das bloße Liegen im Bett sind
+zweitrangig. Für eine belastbare *kausale* Aussage wäre der nächste Schritt ein
+multiples Regressionsmodell, das die Schlafgrößen gemeinsam betrachtet.
